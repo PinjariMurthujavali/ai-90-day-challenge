@@ -48,4 +48,4 @@ Every single day I:
 
 ### ⭐ If you're on a similar journey, feel free to fork this and start your own challenge!
 
-`#100DaysOfCode` `#AI` `#Automation` `#ERPNext` `#Frappe` `#FullStackDeveloper`
+`#100DaysOfCode` `#AI` `#Automation`  `#FullStackDeveloper`
