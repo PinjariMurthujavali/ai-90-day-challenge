@@ -1,7 +1,7 @@
 ![Banner](./banner.png)
 
 # 🚀 AI 90-Day Challenge
-### From Frappe/ERPNext Developer → AI-Powered Full Stack Automation Engineer
+### AI-Powered Full Stack Automation Engineer
 
 ![Progress](https://img.shields.io/badge/Progress-Day%201%2F90-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.x-yellow?style=for-the-badge&logo=python)
@@ -12,24 +12,12 @@
 
 ## 📌 About This Challenge
 
-Documenting my 90-day journey of leveling up from a **Frappe/ERPNext Developer** into an **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn post at a time.
+Documenting my 90-day journey of leveling up **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn.
 
 Every single day I:
 - ✅ Write and push code to this repo
 - ✅ Share progress on LinkedIn
 - ✅ Build real, working projects (not just tutorials)
-
----
-
-## 🎯 Roadmap
-
-| Phase | Days | Focus |
-|-------|------|-------|
-| **Phase 1** | 1–30 | AI Foundations + Python Automation (LLM APIs, RAG, Vector DBs) |
-| **Phase 2** | 31–60 | Modern Full Stack (React/Next.js + Frappe API integration) |
-| **Phase 3** | 61–90 | Flagship AI-Automation Project + Deployment + Portfolio Polish |
-
----
 
 ## 🛠️ Tech Stack
 
@@ -60,4 +48,4 @@ Every single day I:
 
 ### ⭐ If you're on a similar journey, feel free to fork this and start your own challenge!
 
-`#100DaysOfCode` `#AI` `#Automation` `#ERPNext` `#Frappe` `#FullStackDeveloper`
+`#100DaysOfCode` `#AI` `#Automation`  `#FullStackDeveloper`
