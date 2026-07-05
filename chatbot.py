@@ -1,97 +1,133 @@
 # ============================================
-# Day 3: AI Personality (System Prompt) + Save Chat to File
+# Day 4: CLI Arguments + Multiple AI Personalities
 # ============================================
 
 import os
 from dotenv import load_dotenv
 from groq import Groq
 from datetime import datetime
-# ↑ "datetime" ante - Python built-in library, current date/time
-# తీసుకోవడానికి వాడుతాం (chat save చేసేటప్పుడు timestamp కోసం)
+import sys
+# ↑ "sys" → Python system module, command-line arguments తీసుకోవడానికి
+# Terminal నుండి arguments pass చేస్తాం, ఇక్కడ access చేస్తాం
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
 
-# STEP 1: SYSTEM PROMPT - AI కి "personality/role" ఇవ్వడం
-system_prompt = "You are a friendly, motivating coding mentor who explains things simply and encourages the user like a supportive friend."
-# ↑ Idi oka plain text - AI కి "నువ్వు ఎవరు, ఎలా behave చేయాలి" ani చెప్తుంది
-# Idi marchi, AI ni "career coach", "funny comedian", "strict teacher"
-# ఇలా ఏదైనా personality గా మార్చుకోవచ్చు - ప్రయత్నించి చూడు!
+# STEP 1: Multiple Personalities Dictionary Create చేయడం
+personalities = {
+    "mentor": "You are a friendly, motivating coding mentor who explains things simply and encourages the user like a supportive friend.",
+    
+    "comedian": "You are a witty, funny comedian who makes jokes and uses humor while still being helpful. Keep responses light and entertaining.",
+    
+    "strict_teacher": "You are a strict but fair teacher who doesn't tolerate nonsense. Be direct, no-nonsense, and demand excellence. Correct mistakes harshly but fairly.",
+    
+    "zen_master": "You are a calm, wise zen master who speaks in philosophical terms and uses metaphors. Help users see the bigger picture and find inner peace through coding.",
+    
+    "enthusiast": "You are an overly enthusiastic tech enthusiast who gets excited about everything! Use lots of emojis and exclamation marks. Hype up the user!",
+}
+# ↑ "dictionary" ante - key:value pairs లో data store చేయడం
+# ఇక్కడ key = personality names ("mentor", "comedian", etc)
+# value = system prompt text (ee personality кoసam instructions)
 
 
-# STEP 2: Conversation history - kani ippudu SYSTEM message tho START avutundi
+# STEP 2: Default Personality Set చేయడం
+default_personality = "mentor"
+# ↑ User ఏ personality specify చేయకపోతే, ఈ default use చేస్తాం
+
+
+# STEP 3: Command-line Arguments నుండి Personality Choose చేయడం
+selected_personality = default_personality
+# ↑ మొదట default గా set చేస్తాం
+
+# STEP 4: sys.argv చెక్ చేయడం
+if len(sys.argv) > 1:
+    # ↑ sys.argv[0] = script name ("chatbot.py")
+    # sys.argv[1] = first argument (if user passes)
+    # "if len(sys.argv) > 1" → user 1+ argument pass చేసినా ani check
+    
+    requested_personality = sys.argv[1].lower()
+    # ↑ sys.argv[1] → terminal నుండి first argument తీసుకుంటుంది
+    # .lower() → caps undaina vundaina, lowercase గా convert చేస్తుంది
+    # Example: user "python chatbot.py MENTOR" type చేస్తే → "mentor" అవుతుంది
+    
+    if requested_personality in personalities:
+        # ↑ "if ... in dictionary" → ఆ key dictionary లో ఉందా ani check
+        selected_personality = requested_personality
+        print(f"✅ Personality selected: {selected_personality.upper()}\n")
+    else:
+        # ↑ User invalid personality type చేస్తే
+        print(f"❌ Personality '{requested_personality}' not found!")
+        print(f"Available personalities: {', '.join(personalities.keys())}")
+        print(f"Using default: {default_personality}\n")
+        selected_personality = default_personality
+else:
+    print(f"💡 Tip: Run with --help for personality options or: python chatbot.py <personality_name>\n")
+    print(f"Available: {', '.join(personalities.keys())}\n")
+
+
+# STEP 5: Selected Personality నుండి System Prompt తీసుకోవడం
+system_prompt = personalities[selected_personality]
+# ↑ dictionary[key] → ఆ key కోసం value తీసుకుంటుంది
+# Example: personalities["mentor"] → mentor personality system prompt
+
+
+# STEP 6: Conversation History with System Prompt
 conversation_history = [
     {"role": "system", "content": system_prompt}
-    # ↑ "role": "system" - idi user కాదు, AI కాదు, ఇది "instructions"
-    # ఇది AI కి conversation start అయ్యేముందే ఇచ్చే "rule book"
-    # List లో మొదటి item గా ఉండాలి, ఎందుకంటే idi context set చేస్తుంది
 ]
 
 
-print("🤖 AI Chatbot (with Personality + Memory) Ready!")
-print("'exit' ani type chesthe chat aagi, file lo save avutundi.\n")
+# STEP 7: Welcome Message (personality tho together)
+personality_emoji = {
+    "mentor": "🎓",
+    "comedian": "🤣",
+    "strict_teacher": "👨‍🏫",
+    "zen_master": "🧘",
+    "enthusiast": "🤩",
+}
+# ↑ Personality కోసం emoji — visual indication
+
+print(f"{personality_emoji.get(selected_personality, '🤖')} AI Chatbot ({selected_personality.upper()}) Ready!")
+print("Type 'exit' to end chat and save.\n")
 
 
-# STEP 3: Loop start cheyadam (ade lాగే)
+# STEP 8: Main Loop
 while True:
-    user_question = input("Ni question enti? : ")
+    user_question = input("Nీ question enti? : ")
 
     if user_question.lower() == "exit":
-        # STEP 4: Exit ayyaka, chat ni FILE lo SAVE cheyadam
-        # ============================================
-
-        # STEP 4a: File పేరు కి timestamp add cheyadam (unique file kosam)
+        # File Save Logic (Day 3 నుండి same)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        # ↑ datetime.now() → ఇప్పుడు exact date & time తీసుకుంటుంది
-        # .strftime("%Y-%m-%d_%H-%M-%S") → దాన్ని readable text format కి మారుస్తుంది
-        # Example output: "2026-07-03_14-30-45"
-        # Idi enduku? → prathi chat session ki వేరే file name వచ్చేలా,
-        # పాత chat overwrite avvakుండా
-
-        filename = f"chat_history_{timestamp}.txt"
-        # ↑ "f" string ante - variable value ni string లోపల insert cheయడం
-        # Example: filename = "chat_history_2026-07-03_14-30-45.txt"
-
-        # STEP 4b: File open చేసి, రాయడం (write mode)
+        filename = f"chat_history_{selected_personality}_{timestamp}.txt"
+        # ↑ File name lo personality name కూడా include చేస్తాం
+        # Example: chat_history_comedian_2026-07-04_...txt
+        
         with open(filename, "w", encoding="utf-8") as file:
-            # ↑ open(filename, "w") → ఈ పేరుతో ఒక కొత్త file create చేస్తుంది
-            # "w" mode ante "write" - ఖాళీ file గా start అవుతుంది
-            # encoding="utf-8" → emojis/special characters సరిగ్గా save అవ్వడానికి
-            # "with...as file" → file ని safely open చేసి, పని అయ్యాక
-            # automatic గా close చేస్తుంది (మనం మర్చిపోయినా సరే)
-
+            file.write(f"PERSONALITY: {selected_personality.upper()}\n")
+            file.write("=" * 50 + "\n\n")
+            # ↑ File header లో personality mention చేస్తాం
+            
             for message in conversation_history:
-                # ↑ conversation_history list లో ప్రతి item మీద loop run అవుతుంది
-                # (system message కూడా కలిపి)
-
                 if message["role"] == "system":
                     continue
-                    # ↑ "continue" → ఈ loop cycle ని skip చేసి next కి వెళ్తుంది
-                    # system message ని file లో రాయము (అది AI instructions మాత్రమే)
-
+                
                 role = message["role"]
                 content = message["content"]
                 file.write(f"{role.upper()}: {content}\n\n")
-                # ↑ file.write() → file లో text రాస్తుంది
-                # role.upper() → "user"/"assistant" ni "USER"/"ASSISTANT" గా మారుస్తుంది
-                # \n\n → రెండు new lines (readability కోసం gap)
 
-        print(f"\n Chat saved to: {filename}")
-        print("Chat end ayyindi. Bye bro! ")
+        print(f"\n💾 Chat saved to: {filename}")
+        print("Chat end ayyindi. Bye bro! 👋")
         break
 
-    # STEP 5: User question ni history కి add చేయడం (ade లాగే)
+    # Add User Message
     conversation_history.append({"role": "user", "content": user_question})
 
-    # STEP 6: AI కి POORA history (system prompt తో సహా) పంపడం
+    # AI Response
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=conversation_history
-        # ↑ Ippudu ఇందులో system prompt + full conversation history
-        # రెండూ ఉంటాయి, కాబట్టి AI దాని "personality" ని గుర్తుపెట్టుకుంటూనే
-        # past messages కూడా గుర్తుంచుకుంటుంది
     )
 
     ai_reply = response.choices[0].message.content
