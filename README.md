@@ -3,16 +3,17 @@
 # 🚀 AI 90-Day Challenge
 ### AI-Powered Full Stack Automation Engineer
 
-![Progress](https://img.shields.io/badge/Progress-Day%201%2F90-blue?style=for-the-badge)
+![Progress](https://img.shields.io/badge/Progress-Day%205%2F90-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.x-yellow?style=for-the-badge&logo=python)
 ![Groq](https://img.shields.io/badge/AI-Groq%20API-orange?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-In%20Progress-brightgreen?style=for-the-badge)
 
+![Visitors](https://komarev.com/ghpvc/?username=PinjariMurthujavali&repo=ai-90-day-challenge&label=Profile%20Views&color=blueviolet&style=for-the-badge)
+
 ---
 
 ## 📌 About This Challenge
-
-Documenting my 90-day journey of leveling up **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn.
+Documenting my 90-day journey of leveling up **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn post at a time.
 
 Every single day I:
 - ✅ Write and push code to this repo
@@ -20,7 +21,6 @@ Every single day I:
 - ✅ Build real, working projects (not just tutorials)
 
 ## 🛠️ Tech Stack
-
 - **Languages:** Python, JavaScript
 - **AI/LLM:** Groq API, Llama 3.3
 - **Backend:** Frappe/ERPNext, Flask/FastAPI
@@ -34,13 +34,16 @@ Every single day I:
 | Day | What I Built | Link |
 |-----|--------------|------|
 | 1 | 🤖 First AI Chatbot using Groq API (Python) | [`chatbot.py`](./chatbot.py) |
+| 2 | 🧠 Added Conversation Memory to Chatbot | [`chatbot.py`](./chatbot.py) |
+| 3 | 🎭 Added AI Personality to Chatbot | [`chatbot.py`](./chatbot.py) |
+| 4 | ⚙️ CLI Arguments + Multiple AI Personalities | [`chatbot.py`](./chatbot.py) |
+| 5 | 📊 Chat Analysis + Sentiment Detection + JSON Export | [`chatbot.py`](./chatbot.py) |
 
 *(This table updates daily — check back for progress!)*
 
 ---
 
 ## 🔗 Connect With Me
-
 - 💼 LinkedIn: https://www.linkedin.com/in/murthujavali-pinjari18/
 - 🐙 GitHub: [@PinjariMurthujavali](https://github.com/PinjariMurthujavali)
 
@@ -48,4 +51,4 @@ Every single day I:
 
 ### ⭐ If you're on a similar journey, feel free to fork this and start your own challenge!
 
-`#100DaysOfCode` `#AI` `#Automation`  `#FullStackDeveloper`
+`#100DaysOfCode` `#AI` `#Automation` `#FullStackDeveloper`
