@@ -1,54 +1,57 @@
 ![Banner](./banner.png)
 
 # 🚀 AI 90-Day Challenge
+
 ### AI-Powered Full Stack Automation Engineer
 
-![Progress](https://img.shields.io/badge/Progress-Day%205%2F90-blue?style=for-the-badge)
+![Progress](https://img.shields.io/badge/Progress-Day%206%2F90-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.x-yellow?style=for-the-badge&logo=python)
 ![Groq](https://img.shields.io/badge/AI-Groq%20API-orange?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-In%20Progress-brightgreen?style=for-the-badge)
 
-![Visitors](https://komarev.com/ghpvc/?username=PinjariMurthujavali&repo=ai-90-day-challenge&label=Profile%20Views&color=blueviolet&style=for-the-badge)
-
 ---
 
 ## 📌 About This Challenge
-Documenting my 90-day journey of leveling up **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn post at a time.
+
+Documenting my 90-day journey of leveling up into **AI + Full Stack + Automation Engineer** — one commit and one LinkedIn post at a time.
 
 Every single day I:
 - ✅ Write and push code to this repo
 - ✅ Share progress on LinkedIn
-- ✅ Build real, working projects (not just tutorials)
+- ✅ Build real, working projects
+
+---
 
 ## 🛠️ Tech Stack
+
 - **Languages:** Python, JavaScript
 - **AI/LLM:** Groq API, Llama 3.3
-- **Backend:** Frappe/ERPNext, Flask/FastAPI
-- **Frontend:** React, Next.js
+- **Frontend:** Streamlit, React, Next.js
+- **Backend:** Flask/FastAPI, Frappe/ERPNext
 - **Tools:** Git, GitHub, VS Code
 
 ---
 
-## 📅 Daily Log
+## 📅 Daily Projects
 
-| Day | What I Built | Link |
-|-----|--------------|------|
-| 1 | 🤖 First AI Chatbot using Groq API (Python) | [`chatbot.py`](./chatbot.py) |
-| 2 | 🧠 Added Conversation Memory to Chatbot | [`chatbot.py`](./chatbot.py) |
-| 3 | 🎭 Added AI Personality to Chatbot | [`chatbot.py`](./chatbot.py) |
-| 4 | ⚙️ CLI Arguments + Multiple AI Personalities | [`chatbot.py`](./chatbot.py) |
-| 5 | 📊 Chat Analysis + Sentiment Detection + JSON Export | [`chatbot.py`](./chatbot.py) |
-
-*(This table updates daily — check back for progress!)*
+| Day | Project | Description | Repo |
+|-----|---------|-------------|------|
+| 1 | 🤖 Basic AI Chatbot | First LLM API integration | [day-1-chatbot](https://github.com/PinjariMurthujavali/day-1-chatbot) |
+| 2 | 🧠 Conversation Memory | Multi-turn context awareness | [day-2-chatbot](https://github.com/PinjariMurthujavali/day-2-chatbot) |
+| 3 | 🎭 System Prompts | AI personality control + file save | [day-3-chatbot](https://github.com/PinjariMurthujavali/day-3-chatbot) |
+| 4 | ⚙️ CLI Arguments | 5 personality modes + customization | [day-4-chatbot](https://github.com/PinjariMurthujavali/day-4-chatbot) |
+| 5 | 📊 Chat Analysis | Sentiment detection + JSON export | [day-5-chatbot](https://github.com/PinjariMurthujavali/day-5-chatbot) |
+| 6 | 🌐 Web UI | Streamlit dashboard + analytics | [day-6-chatbot](https://github.com/PinjariMurthujavali/day-6-chatbot) |
 
 ---
 
 ## 🔗 Connect With Me
+
 - 💼 LinkedIn: https://www.linkedin.com/in/murthujavali-pinjari18/
 - 🐙 GitHub: [@PinjariMurthujavali](https://github.com/PinjariMurthujavali)
 
 ---
 
-### ⭐ If you're on a similar journey, feel free to fork this and start your own challenge!
+### ⭐ Building in Public | 84 Days Remaining
 
-`#100DaysOfCode` `#AI` `#Automation` `#FullStackDeveloper`
+`#100DaysOfCode` `#AI` `#Automation` `#BuildInPublic` `#FullStackDeveloper`
