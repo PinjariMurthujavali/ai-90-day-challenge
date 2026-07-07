@@ -45,13 +45,49 @@ Every single day I:
 
 ---
 
+## 🎯 Key Learnings
+
+**Day 1-2:** AI API integration + conversation memory  
+**Day 3:** System prompts + file persistence  
+**Day 4:** CLI arguments + dynamic configuration  
+**Day 5:** Analytics + sentiment detection  
+**Day 6:** Professional web UI + deployment  
+
+---
+
+## 🚀 Skills Acquired
+
+✅ Python (virtual environments, functions, classes, file I/O)  
+✅ LLM APIs (Groq, prompt engineering, function calling)  
+✅ Web Development (Streamlit, interactive dashboards)  
+✅ Git/GitHub (version control, conflict resolution)  
+✅ Data Analysis (sentiment, keywords, visualization)  
+✅ Deployment (free cloud platforms)  
+
+---
+
 ## 🔗 Connect With Me
 
 - 💼 LinkedIn: https://www.linkedin.com/in/murthujavali-pinjari18/
 - 🐙 GitHub: [@PinjariMurthujavali](https://github.com/PinjariMurthujavali)
+- 📧 Email: rajesh@brillianttechnologies.in
 
 ---
 
-### ⭐ Building in Public | 84 Days Remaining
+## 📊 Challenge Progress
 
-`#100DaysOfCode` `#AI` `#Automation` `#BuildInPublic` `#FullStackDeveloper`
+**6 Days Complete** ✅  
+**84 Days Remaining** 🚀  
+**Building in Public** 💪
+
+---
+
+## ⭐ This Project
+
+If you're learning AI/Full Stack development, feel free to fork and start your own 90-day challenge!
+
+`#100DaysOfCode` `#AI` `#Automation` `#BuildInPublic` `#FullStackDeveloper` `#Python` `#OpenToWork`
+
+---
+
+**Built with ❤️ | Powered by Groq API**
