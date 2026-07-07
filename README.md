@@ -31,13 +31,13 @@ Every single day I:
 
 ## 📅 Daily Log
 
-| Day | What I Built | Link |
-|-----|--------------|------|
-| 1 | 🤖 First AI Chatbot using Groq API (Python) | [`chatbot.py`](./chatbot.py) |
-| 2 | 🧠 Added Conversation Memory to Chatbot | [`chatbot.py`](./chatbot.py) |
-| 3 | 🎭 Added AI Personality to Chatbot | [`chatbot.py`](./chatbot.py) |
-| 4 | ⚙️ CLI Arguments + Multiple AI Personalities | [`chatbot.py`](./chatbot.py) |
-| 5 | 📊 Chat Analysis + Sentiment Detection + JSON Export | [`chatbot.py`](./chatbot.py) |
+| Day | What I Built | Repo Link |
+|-----|--------------|-----------|
+| 1 | 🤖 First AI Chatbot using Groq API | [day-1-chatbot](https://github.com/PinjariMurthujavali/day-1-chatbot) |
+| 2 | 🧠 Added Conversation Memory to Chatbot | [day-2-chatbot](https://github.com/PinjariMurthujavali/day-2-chatbot) |
+| 3 | 🎭 Added AI Personality + Chat History Save | [day-3-chatbot](https://github.com/PinjariMurthujavali/day-3-chatbot) |
+| 4 | ⚙️ CLI Arguments + Multiple AI Personalities | [day-4-chatbot](https://github.com/PinjariMurthujavali/day-4-chatbot) |
+| 5 | 📊 Chat Analysis + Sentiment Detection + JSON Export | [day-5-chatbot](https://github.com/PinjariMurthujavali/day-5-chatbot) |
 
 *(This table updates daily — check back for progress!)*
 
