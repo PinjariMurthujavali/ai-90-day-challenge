@@ -108,6 +108,18 @@ def init_database():
         )
     ''')
 
+    # ---- NEW: per-profile view tracking (who visited + where the click came from) ----
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS profile_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_user_id INTEGER NOT NULL,
+            viewer_username TEXT,
+            source TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (profile_user_id) REFERENCES users (id)
+        )
+    ''')
+
     # ---- NEW: site-wide visit + click counters (permanent, survives restarts) ----
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS site_stats (
@@ -117,6 +129,16 @@ def init_database():
     ''')
     cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_visits', 0)")
     cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_clicks', 0)")
+
+    # ---- NEW: profile views with source tracking (permanent) ----
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS profile_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_username TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'Direct',
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
 
     # ---- lightweight migration: add columns if an old DB file exists ----
     existing_cols = [row[1] for row in cursor.execute("PRAGMA table_info(chats)")]
