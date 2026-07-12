@@ -1,4 +1,68 @@
-venv/
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Database
+*.db
+chatbot.db
+
+# Python
 __pycache__/
-chat_history_*.txt
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Export files
+*.pdf
+*.json
+chat_*.pdf
+chat_*.json
+
+# Streamlit
+.streamlit/
+*.streamlit
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
