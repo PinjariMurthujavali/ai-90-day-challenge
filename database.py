@@ -92,7 +92,23 @@ def _query(sql, params=None, retries=3):
     raise last_err
 
 
+_already_initialized = False
+
+
 def init_database():
+    # Streamlit reruns the WHOLE script on every click/interaction, and this
+    # function was being called at the top of chatbot.py every single time —
+    # hammering Turso with 20+ fresh network requests per click, which is
+    # both slow and triggers "stream not found" errors under load.
+    # A Python module is only imported/executed ONCE per running process,
+    # so this module-level flag correctly persists across every Streamlit
+    # rerun and every user session in this container — the 20+ statements
+    # below now really do run only once per app boot.
+    global _already_initialized
+    if _already_initialized:
+        return
+    _already_initialized = True
+
     _run('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
