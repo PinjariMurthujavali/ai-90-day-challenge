@@ -108,6 +108,16 @@ def init_database():
         )
     ''')
 
+    # ---- NEW: site-wide visit + click counters (permanent, survives restarts) ----
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS site_stats (
+            stat_key TEXT PRIMARY KEY,
+            stat_value INTEGER NOT NULL DEFAULT 0
+        )
+    ''')
+    cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_visits', 0)")
+    cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_clicks', 0)")
+
     # ---- lightweight migration: add columns if an old DB file exists ----
     existing_cols = [row[1] for row in cursor.execute("PRAGMA table_info(chats)")]
     if "is_public" not in existing_cols:
