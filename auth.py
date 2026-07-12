@@ -27,9 +27,13 @@ def register_user(username, password):
         conn.commit()
         conn.close()
         return True, "Registration successful!"
-    except sqlite3.IntegrityError:
-        return False, "USERNAME_EXISTS"
     except Exception as e:
+        # sqlite3 raises IntegrityError for UNIQUE violations; libsql/Turso
+        # raises a different exception class with "UNIQUE constraint" (or
+        # similar) in the message — check the text so both are caught.
+        err_text = str(e).lower()
+        if "unique" in err_text or "constraint" in err_text:
+            return False, "USERNAME_EXISTS"
         return False, f"Error: {str(e)}"
 
 
@@ -53,6 +57,15 @@ def get_username(user_id):
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else "Unknown"
+
+
+def get_user_id_by_username(username):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 
 # ---- persistent session (token) functions ----
