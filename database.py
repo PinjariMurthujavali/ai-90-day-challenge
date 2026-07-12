@@ -108,18 +108,6 @@ def init_database():
         )
     ''')
 
-    # ---- NEW: per-profile view tracking (who visited + where the click came from) ----
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS profile_views (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            profile_user_id INTEGER NOT NULL,
-            viewer_username TEXT,
-            source TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (profile_user_id) REFERENCES users (id)
-        )
-    ''')
-
     # ---- NEW: site-wide visit + click counters (permanent, survives restarts) ----
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS site_stats (
@@ -146,6 +134,19 @@ def init_database():
         cursor.execute("ALTER TABLE chats ADD COLUMN is_public INTEGER DEFAULT 0")
     if "share_token" not in existing_cols:
         cursor.execute("ALTER TABLE chats ADD COLUMN share_token TEXT")
+
+    # ---- migration: fix profile_views if an older/wrong schema already exists ----
+    pv_cols = [row[1] for row in cursor.execute("PRAGMA table_info(profile_views)")]
+    if pv_cols and "profile_username" not in pv_cols:
+        cursor.execute("DROP TABLE profile_views")
+        cursor.execute('''
+            CREATE TABLE profile_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_username TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'Direct',
+                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
     conn.commit()
     conn.close()
