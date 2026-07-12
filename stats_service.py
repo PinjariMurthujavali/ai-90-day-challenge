@@ -3,7 +3,17 @@
 # Site-wide "how many people visited" + "how many clicks"
 # counters. Stored permanently in the site_stats table so
 # the numbers survive app restarts/redeploys.
+#
+# UPDATED: these getters were being called unconditionally on
+# EVERY Streamlit rerun (i.e. every single click, by every user)
+# — 3 extra network round-trips to the remote Turso database on
+# every interaction, which is the main reason the app felt slow.
+# These numbers don't need to be split-second accurate, so they
+# are now cached for a few seconds with st.cache_data — this
+# alone removes most of the per-click network delay.
 # ============================================
+
+import streamlit as st
 
 from database import get_connection
 
@@ -31,6 +41,7 @@ def _increment(stat_key, by=1):
 def record_visit():
     """Call once per new browser session (a real 'new visitor' load)."""
     _increment("total_visits")
+    get_total_visits.clear()
 
 
 def record_click():
@@ -38,14 +49,17 @@ def record_click():
     _increment("total_clicks")
 
 
+@st.cache_data(ttl=20)
 def get_total_visits():
     return _get("total_visits")
 
 
+@st.cache_data(ttl=20)
 def get_total_clicks():
     return _get("total_clicks")
 
 
+@st.cache_data(ttl=20)
 def get_total_registered_users():
     """Total number of people who have ever registered (permanent count)."""
     conn = get_connection()
