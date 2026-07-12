@@ -1,5 +1,5 @@
 # ============================================
-# Day 10: Notifications + Public Profiles
+# Day 12: Notifications + Public Profiles
 # Multi-user AI chatbot — built on Day 9 community foundation
 #
 # NEW today:
@@ -26,6 +26,7 @@ import chat_service as chats
 import social_service as social
 import notification_service as notify
 import stats_service as stats
+import profile_stats
 from export_utils import export_chat_json, export_chat_pdf
 
 load_dotenv()
@@ -93,6 +94,9 @@ if not st.session_state.user_id:
 
 # ---- deep link: ?share=<token> opens a public chat straight into Explore ----
 share_token_param = st.query_params.get("share")
+
+# ---- deep link: ?profile=<username> opens someone's public profile directly ----
+profile_param = st.query_params.get("profile")
 
 
 # ============================================
@@ -290,6 +294,21 @@ else:
         if shared:
             st.session_state.main_view = "explore"
             st.session_state.explore_view_chat_id = shared[0]
+
+    # ---- deep link into a shared profile (records a profile view + source) ----
+    if profile_param:
+        st.session_state.main_view = "profile"
+        st.session_state.profile_username = profile_param
+        counted = st.session_state.setdefault("_counted_profile_views", set())
+        if profile_param not in counted and profile_param != st.session_state.username:
+            referer = ""
+            try:
+                referer = st.context.headers.get("Referer", "") if hasattr(st, "context") else ""
+            except Exception:
+                referer = ""
+            source = profile_stats.detect_source(referer)
+            profile_stats.record_profile_view(profile_param, source)
+            counted.add(profile_param)
 
     header_col1, header_col2 = st.columns([3, 1])
     with header_col1:
@@ -642,11 +661,28 @@ else:
         if not profile_username:
             st.info("No profile selected. Go to 🌍 Explore and click a 👤 icon.")
         else:
-            back_col, _ = st.columns([1, 4])
+            back_col, share_col = st.columns([1, 1])
             with back_col:
                 if st.button("← Back to Explore"):
                     st.session_state.main_view = "explore"
                     st.rerun()
+            with share_col:
+                with st.popover("🔗 Share this profile", use_container_width=True):
+                    st.caption("Send this link — every click gets counted as a profile view:")
+                    st.code(f"?profile={profile_username}", language=None)
+                    st.caption("On the deployed app, prefix this with your app's URL.")
+
+            # ---- NEW: profile views + traffic source, visible only to the owner ----
+            if profile_username == st.session_state.username:
+                total_views = profile_stats.get_total_views(profile_username)
+                by_source = profile_stats.get_views_by_source(profile_username)
+                with st.container(border=True):
+                    st.markdown(f"##### 👁️ Profile Views — **{total_views:,}** total")
+                    if by_source:
+                        for source, count in by_source:
+                            st.markdown(f"- **{source}**: {count:,} click(s)")
+                    else:
+                        st.caption("No views yet — share your profile link above! 🚀")
 
             st.markdown(
                 f'<div class="profile-header"><span class="profile-avatar">🧑‍💻</span>'
