@@ -324,9 +324,9 @@ else:
             st.session_state.current_chat_id = None
             st.rerun()
 
-    # ---- top nav: Chats / Explore / Analytics / Notifications ----
+    # ---- top nav: Chats / Explore / Analytics / Notifications / My Profile ----
     unread_count = notify.get_unread_count(st.session_state.user_id)
-    nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1, 1, 1, 1, 1.5])
+    nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, _ = st.columns([1, 1, 1, 1, 1, 1])
     with nav_col1:
         if st.button("💬 Chats", use_container_width=True,
                       type="primary" if st.session_state.main_view == "chat" else "secondary"):
@@ -347,6 +347,12 @@ else:
         if st.button(bell_label, use_container_width=True,
                       type="primary" if st.session_state.main_view == "notifications" else "secondary"):
             st.session_state.main_view = "notifications"
+            st.rerun()
+    with nav_col5:
+        if st.button("👤 My Profile", use_container_width=True,
+                      type="primary" if st.session_state.main_view == "profile" else "secondary"):
+            st.session_state.profile_username = st.session_state.username
+            st.session_state.main_view = "profile"
             st.rerun()
 
     st.write("---")
