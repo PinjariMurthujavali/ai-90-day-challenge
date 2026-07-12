@@ -44,3 +44,13 @@ def get_total_visits():
 
 def get_total_clicks():
     return _get("total_clicks")
+
+
+def get_total_registered_users():
+    """Total number of people who have ever registered (permanent count)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
