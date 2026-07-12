@@ -1,5 +1,5 @@
 # ============================================
-# Day 12: database.py
+# Day 10: database.py
 # Central SQLite connection + schema for the whole app.
 # Split out of the old single chatbot.py so each feature
 # area (auth / chat / social) can own its own queries.
