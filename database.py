@@ -12,6 +12,14 @@
 # configured in Streamlit secrets. Falls back to the old local
 # file automatically when running on your own machine without
 # those secrets set, so local dev still works unchanged.
+#
+# UPDATED AGAIN: the remote Turso connection (Hrana/HTTP) can
+# drop its "stream" if a single connection is kept open across
+# many sequential statements, causing
+# `ValueError: Hrana: stream not found`. init_database() now
+# opens a FRESH connection for every single statement, which
+# sidesteps that entirely — a little slower at startup, but
+# startup only happens once per app boot, so it's fine.
 # ============================================
 
 import sqlite3
@@ -46,11 +54,46 @@ def get_connection():
     return conn
 
 
-def init_database():
-    conn = get_connection()
-    cursor = conn.cursor()
+def _run(sql, params=None, ignore_errors=False, retries=3):
+    """Run ONE statement on its OWN fresh connection + commit + close.
+    Avoids the Turso/Hrana 'stream not found' error that happens when a
+    single connection is reused across many statements. Retries a few
+    times on transient network hiccups."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(sql, params or ())
+            conn.commit()
+            conn.close()
+            return
+        except Exception as e:
+            last_err = e
+            continue
+    if not ignore_errors:
+        raise last_err
 
-    cursor.execute('''
+
+def _query(sql, params=None, retries=3):
+    """Run ONE read query on its own fresh connection and return fetchall()."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(sql, params or ())
+            rows = cur.fetchall()
+            conn.close()
+            return rows
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err
+
+
+def init_database():
+    _run('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
@@ -59,8 +102,7 @@ def init_database():
         )
     ''')
 
-    # ---- chats now carry an is_public flag + a share_token for Day 9 ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS chats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -73,7 +115,7 @@ def init_database():
         )
     ''')
 
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
@@ -84,7 +126,7 @@ def init_database():
         )
     ''')
 
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -93,8 +135,7 @@ def init_database():
         )
     ''')
 
-    # ---- NEW for Day 9: likes on public chats ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS likes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
@@ -106,8 +147,7 @@ def init_database():
         )
     ''')
 
-    # ---- NEW for Day 9: comments on public chats ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS comments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
@@ -119,8 +159,7 @@ def init_database():
         )
     ''')
 
-    # ---- NEW for Day 10: notifications (likes/comments on your public chats) ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS notifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -136,18 +175,16 @@ def init_database():
         )
     ''')
 
-    # ---- NEW: site-wide visit + click counters (permanent, survives restarts) ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS site_stats (
             stat_key TEXT PRIMARY KEY,
             stat_value INTEGER NOT NULL DEFAULT 0
         )
     ''')
-    cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_visits', 0)")
-    cursor.execute("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_clicks', 0)")
+    _run("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_visits', 0)")
+    _run("INSERT OR IGNORE INTO site_stats (stat_key, stat_value) VALUES ('total_clicks', 0)")
 
-    # ---- NEW: profile views with source tracking (permanent) ----
-    cursor.execute('''
+    _run('''
         CREATE TABLE IF NOT EXISTS profile_views (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             profile_username TEXT NOT NULL,
@@ -157,37 +194,19 @@ def init_database():
     ''')
 
     # ---- lightweight migration: add columns if an old DB already exists ----
-    # Turso/remote connections don't reliably support PRAGMA table_info(),
-    # so instead we just try the ALTER TABLE and silently ignore the error
-    # if the column already exists. This works the same way on both a
-    # fresh Turso database and an older local sqlite file.
-    for alter_sql in [
-        "ALTER TABLE chats ADD COLUMN is_public INTEGER DEFAULT 0",
-        "ALTER TABLE chats ADD COLUMN share_token TEXT",
-    ]:
-        try:
-            cursor.execute(alter_sql)
-        except Exception:
-            pass
+    _run("ALTER TABLE chats ADD COLUMN is_public INTEGER DEFAULT 0", ignore_errors=True)
+    _run("ALTER TABLE chats ADD COLUMN share_token TEXT", ignore_errors=True)
 
     # ---- migration: fix profile_views if an older/wrong schema exists ----
-    # Try a query that only works on the NEW schema; if it fails, the old
-    # (wrong-column) table is still there, so drop and recreate it.
     try:
-        cursor.execute("SELECT profile_username FROM profile_views LIMIT 1")
+        _query("SELECT profile_username FROM profile_views LIMIT 1")
     except Exception:
-        try:
-            cursor.execute("DROP TABLE IF EXISTS profile_views")
-            cursor.execute('''
-                CREATE TABLE profile_views (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    profile_username TEXT NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'Direct',
-                    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        except Exception:
-            pass
-
-    conn.commit()
-    conn.close()
+        _run("DROP TABLE IF EXISTS profile_views", ignore_errors=True)
+        _run('''
+            CREATE TABLE profile_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_username TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'Direct',
+                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''', ignore_errors=True)
