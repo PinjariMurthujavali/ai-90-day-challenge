@@ -1,5 +1,5 @@
 # ============================================
-# Day 12: Notifications + Public Profiles
+# Day 10: Notifications + Public Profiles
 # Multi-user AI chatbot — built on Day 9 community foundation
 #
 # NEW today:
@@ -53,7 +53,7 @@ st.markdown(
     '<p class="sub-title">Search. Export. Analyze. Share. Your multi-user AI chat community, now with superpowers.</p>',
     unsafe_allow_html=True,
 )
-st.caption(f"👀 {stats.get_total_visits():,} visits  ·  🖱️ {stats.get_total_clicks():,} clicks")
+st.caption(f"👥 {stats.get_total_registered_users():,} registered  ·  👀 {stats.get_total_visits():,} visits  ·  🖱️ {stats.get_total_clicks():,} clicks")
 
 
 # ============================================
