@@ -39,7 +39,10 @@ def get_connection():
     else:
         conn = sqlite3.connect(DB_FILE)
 
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+    except Exception:
+        pass
     return conn
 
 
@@ -153,25 +156,38 @@ def init_database():
         )
     ''')
 
-    # ---- lightweight migration: add columns if an old DB file exists ----
-    existing_cols = [row[1] for row in cursor.execute("PRAGMA table_info(chats)")]
-    if "is_public" not in existing_cols:
-        cursor.execute("ALTER TABLE chats ADD COLUMN is_public INTEGER DEFAULT 0")
-    if "share_token" not in existing_cols:
-        cursor.execute("ALTER TABLE chats ADD COLUMN share_token TEXT")
+    # ---- lightweight migration: add columns if an old DB already exists ----
+    # Turso/remote connections don't reliably support PRAGMA table_info(),
+    # so instead we just try the ALTER TABLE and silently ignore the error
+    # if the column already exists. This works the same way on both a
+    # fresh Turso database and an older local sqlite file.
+    for alter_sql in [
+        "ALTER TABLE chats ADD COLUMN is_public INTEGER DEFAULT 0",
+        "ALTER TABLE chats ADD COLUMN share_token TEXT",
+    ]:
+        try:
+            cursor.execute(alter_sql)
+        except Exception:
+            pass
 
-    # ---- migration: fix profile_views if an older/wrong schema already exists ----
-    pv_cols = [row[1] for row in cursor.execute("PRAGMA table_info(profile_views)")]
-    if pv_cols and "profile_username" not in pv_cols:
-        cursor.execute("DROP TABLE profile_views")
-        cursor.execute('''
-            CREATE TABLE profile_views (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                profile_username TEXT NOT NULL,
-                source TEXT NOT NULL DEFAULT 'Direct',
-                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+    # ---- migration: fix profile_views if an older/wrong schema exists ----
+    # Try a query that only works on the NEW schema; if it fails, the old
+    # (wrong-column) table is still there, so drop and recreate it.
+    try:
+        cursor.execute("SELECT profile_username FROM profile_views LIMIT 1")
+    except Exception:
+        try:
+            cursor.execute("DROP TABLE IF EXISTS profile_views")
+            cursor.execute('''
+                CREATE TABLE profile_views (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_username TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'Direct',
+                    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
