@@ -3,6 +3,15 @@
 # Central SQLite connection + schema for the whole app.
 # Split out of the old single chatbot.py so each feature
 # area (auth / chat / social) can own its own queries.
+#
+# UPDATED: Streamlit Community Cloud does NOT guarantee local
+# file storage persists across redeploys/reboots — every git
+# push can wipe the local chatbot.db file, deleting all users.
+# Fix: connect to a Turso cloud database (SQLite-compatible,
+# free tier) whenever TURSO_DATABASE_URL / TURSO_AUTH_TOKEN are
+# configured in Streamlit secrets. Falls back to the old local
+# file automatically when running on your own machine without
+# those secrets set, so local dev still works unchanged.
 # ============================================
 
 import sqlite3
@@ -12,8 +21,24 @@ DB_FILE = "chatbot.db"
 
 def get_connection():
     """Single place that opens a DB connection so every module
-    talks to the same file with the same settings."""
-    conn = sqlite3.connect(DB_FILE)
+    talks to the same database with the same settings.
+
+    Uses Turso (persistent cloud SQLite) in production when secrets
+    are configured; falls back to a local file otherwise."""
+    try:
+        import streamlit as st
+        turso_url = st.secrets.get("TURSO_DATABASE_URL")
+        turso_token = st.secrets.get("TURSO_AUTH_TOKEN")
+    except Exception:
+        turso_url = None
+        turso_token = None
+
+    if turso_url and turso_token:
+        import libsql
+        conn = libsql.connect(database=turso_url, auth_token=turso_token)
+    else:
+        conn = sqlite3.connect(DB_FILE)
+
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
