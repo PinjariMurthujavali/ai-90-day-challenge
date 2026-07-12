@@ -1,197 +1,778 @@
 # ============================================
-# Day 5: Chat Analysis + Sentiment + JSON Export
+# Day 10: Notifications + Public Profiles
+# Multi-user AI chatbot — built on Day 9 community foundation
+#
+# NEW today:
+#   - 🔔 Notification bell: get pinged when someone likes or
+#     comments on one of your public chats, with an unread badge
+#   - 👤 Public profile pages: click any author's name in Explore
+#     to see everything they've published to the community
+#   - New notification_service.py module (kept separate so the
+#     "who gets notified about what" logic doesn't bloat social_service.py)
 # ============================================
 
-import os
-from dotenv import load_dotenv
+import streamlit as st
+import pandas as pd
 from groq import Groq
-from datetime import datetime
-import sys
-import json
+from dotenv import load_dotenv
+import os
+
+from database import init_database
+from styles import APP_CSS
+from config import PERSONALITIES, personality_info, personality_label
+
+import auth
+import chat_service as chats
+import social_service as social
+import notification_service as notify
+from export_utils import export_chat_json, export_chat_pdf
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
+
+if not api_key:
+    st.error("⚠️ GROQ_API_KEY not found! Please set it in your .env file.")
+    st.stop()
+
 client = Groq(api_key=api_key)
 
+init_database()
 
-# STEP 1: Personalities Dictionary
-personalities = {
-    "mentor": "You are a friendly, motivating coding mentor who explains things simply and encourages the user like a supportive friend.",
-    "comedian": "You are a witty, funny comedian who makes jokes and uses humor while still being helpful. Keep responses light and entertaining.",
-    "strict_teacher": "You are a strict but fair teacher who doesn't tolerate nonsense. Be direct, no-nonsense, and demand excellence.",
-    "zen_master": "You are a calm, wise zen master who speaks in philosophical terms and uses metaphors.",
-    "enthusiast": "You are an overly enthusiastic tech enthusiast who gets excited about everything! Use lots of emojis and exclamation marks.",
+
+# ============================================
+# PAGE CONFIG + CSS
+# ============================================
+
+st.set_page_config(page_title="Murthu AI Chatbot", page_icon="🤖", layout="wide")
+st.markdown(APP_CSS, unsafe_allow_html=True)
+
+st.markdown('<p class="main-title">🤖 Murthu AI Chatbot</p>', unsafe_allow_html=True)
+st.markdown(
+    '<p class="sub-title">Search. Export. Analyze. Share. Your multi-user AI chat community, now with superpowers.</p>',
+    unsafe_allow_html=True,
+)
+
+
+# ============================================
+# SESSION STATE
+# ============================================
+
+defaults = {
+    "user_id": None,
+    "username": None,
+    "current_chat_id": None,
+    "show_new_chat_form": False,
+    "auth_view": "login",
+    "prefill_username": "",
+    "main_view": "chat",          # "chat" | "explore" | "analytics" | "profile" | "notifications"
+    "explore_sort": "popular",    # "popular" | "recent"
+    "explore_view_chat_id": None,
+    "profile_username": None,
 }
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
-default_personality = "mentor"
-selected_personality = default_personality
+# ---- auto-login from a persistent session token in the URL ----
+if not st.session_state.user_id:
+    token = st.query_params.get("token")
+    if token:
+        user = auth.get_user_by_token(token)
+        if user:
+            st.session_state.user_id = user[0]
+            st.session_state.username = user[1]
 
-if len(sys.argv) > 1:
-    requested_personality = sys.argv[1].lower()
-    if requested_personality in personalities:
-        selected_personality = requested_personality
-        print(f"✅ Personality selected: {selected_personality.upper()}\n")
-    else:
-        print(f"❌ Personality '{requested_personality}' not found!")
-        print(f"Available: {', '.join(personalities.keys())}\n")
-
-system_prompt = personalities[selected_personality]
-conversation_history = [{"role": "system", "content": system_prompt}]
-
-personality_emoji = {
-    "mentor": "🎓", "comedian": "🤣", "strict_teacher": "👨‍🏫",
-    "zen_master": "🧘", "enthusiast": "🤩",
-}
-
-print(f"{personality_emoji.get(selected_personality, '🤖')} AI Chatbot ({selected_personality.upper()}) Ready!")
-print("Type 'exit' to end chat, analyze, and save.\n")
+# ---- deep link: ?share=<token> opens a public chat straight into Explore ----
+share_token_param = st.query_params.get("share")
 
 
-# STEP 2: ANALYSIS FUNCTIONS
+# ============================================
+# SMALL REUSABLE UI PIECES
+# ============================================
 
-def analyze_sentiment(text):
-    positive_words = ["good", "great", "amazing", "awesome", "excellent", "love", "best", "perfect", "brilliant"]
-    negative_words = ["bad", "terrible", "awful", "hate", "worst", "poor", "useless", "stupid", "wrong"]
-
-    text_lower = text.lower()
-    pos_count = sum(1 for word in positive_words if word in text_lower)
-    neg_count = sum(1 for word in negative_words if word in text_lower)
-
-    if pos_count > neg_count:
-        return "positive", pos_count
-    elif neg_count > pos_count:
-        return "negative", neg_count
-    else:
-        return "neutral", 0
-
-
-def get_statistics(conversation_history):
-    stats = {
-        "total_messages": 0,
-        "user_messages": 0,
-        "ai_messages": 0,
-        "total_words": 0,
-        "total_characters": 0,
-        "avg_user_message_length": 0,
-        "avg_ai_response_length": 0,
-        "sentiment_breakdown": {"positive": 0, "negative": 0, "neutral": 0},
-    }
-
-    user_words = []
-    ai_words = []
-
-    for message in conversation_history:
-        if message["role"] == "system":
-            continue
-
-        content = message["content"]
-        words = content.split()
-
-        stats["total_messages"] += 1
-        stats["total_words"] += len(words)
-        stats["total_characters"] += len(content)
-
-        sentiment, _ = analyze_sentiment(content)
-        stats["sentiment_breakdown"][sentiment] += 1
-
-        if message["role"] == "user":
-            stats["user_messages"] += 1
-            user_words.extend(words)
+def render_transcript_readonly(history, personality):
+    p_info = personality_info(personality)
+    for role, content in history:
+        if role == "user":
+            st.chat_message("user", avatar="🧑").write(content)
         else:
-            stats["ai_messages"] += 1
-            ai_words.extend(words)
-
-    if stats["user_messages"] > 0:
-        stats["avg_user_message_length"] = stats["total_words"] // stats["user_messages"] // 2
-
-    if stats["ai_messages"] > 0:
-        stats["avg_ai_response_length"] = stats["total_words"] // stats["ai_messages"] // 2
-
-    return stats
+            st.chat_message("assistant", avatar=p_info["emoji"]).write(content)
 
 
-def get_top_keywords(conversation_history, top_n=10):
-    stop_words = {"the", "a", "is", "it", "to", "and", "or", "in", "on", "at", "for", "of", "with", "you", "i"}
+def render_like_and_share(chat_id, share_token, key_prefix):
+    like_col, share_col = st.columns([1, 2])
 
-    word_freq = {}
+    with like_col:
+        liked = social.has_liked(chat_id, st.session_state.user_id)
+        count = social.get_like_count(chat_id)
+        label = f"{'❤️' if liked else '🤍'} {count}"
+        if st.button(label, key=f"{key_prefix}_like_{chat_id}", use_container_width=True):
+            social.toggle_like(chat_id, st.session_state.user_id)
+            st.rerun()
 
-    for message in conversation_history:
-        if message["role"] == "system":
-            continue
-
-        words = message["content"].lower().split()
-
-        for word in words:
-            word = word.strip(".,!?;:")
-
-            if word not in stop_words and len(word) > 2:
-                word_freq[word] = word_freq.get(word, 0) + 1
-
-    top_keywords = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:top_n]
-
-    return top_keywords
+    with share_col:
+        with st.popover("🔗 Share", use_container_width=True):
+            st.caption("Copy this link — anyone can open it straight to this chat:")
+            base_url = st.context.headers.get("Origin", "") if hasattr(st, "context") else ""
+            share_url = f"?share={share_token}" if share_token else ""
+            st.code(share_url or "Publish this chat first to get a link", language=None)
+            st.caption("On the deployed app, prefix this with your app's URL.")
 
 
-# STEP 3: Main Chat Loop
+def render_comments(chat_id, key_prefix):
+    st.markdown("##### 💬 Comments")
+    comments = social.get_comments(chat_id)
 
-while True:
-    user_question = input("Nీ question enti? : ")
+    if not comments:
+        st.caption("No comments yet — be the first to say something nice! 👀")
+    else:
+        for comment_id, commenter, content, created_at in comments:
+            col1, col2 = st.columns([9, 1])
+            with col1:
+                st.markdown(
+                    f'<div class="comment-box">'
+                    f'<span class="comment-author">{commenter}</span>'
+                    f'<span class="comment-time">{str(created_at)[:16]}</span>'
+                    f'<div class="comment-content">{content}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                if commenter == st.session_state.username:
+                    if st.button("🗑️", key=f"{key_prefix}_delcomment_{comment_id}"):
+                        social.delete_comment(comment_id, st.session_state.user_id)
+                        st.rerun()
 
-    if user_question.lower() == "exit":
-        print("\n" + "="*50)
-        print("📊 CHAT ANALYSIS")
-        print("="*50 + "\n")
+    with st.form(key=f"{key_prefix}_comment_form_{chat_id}", clear_on_submit=True):
+        new_comment = st.text_input("Add a comment", placeholder="wow super! 🔥",
+                                     label_visibility="collapsed")
+        submitted = st.form_submit_button("Post comment", use_container_width=True)
+        if submitted and new_comment.strip():
+            social.add_comment(chat_id, st.session_state.user_id, new_comment)
+            st.rerun()
 
-        stats = get_statistics(conversation_history)
-        keywords = get_top_keywords(conversation_history, top_n=10)
 
-        print(f"📈 Statistics:")
-        print(f"   Total Messages: {stats['total_messages']}")
-        print(f"   User Messages: {stats['user_messages']}")
-        print(f"   AI Responses: {stats['ai_messages']}")
-        print(f"   Total Words: {stats['total_words']}")
-        print(f"   Total Characters: {stats['total_characters']}")
-        print()
+def render_public_chat_viewer(chat_id, key_prefix="view"):
+    """Full read-only view of a public chat: transcript + like + share + comments."""
+    conn_row = social.get_chat_by_share_token  # not used directly here; fetch via chats
+    history = chats.get_chat_history(chat_id)
+    owner_id = chats.get_chat_owner(chat_id)
+    owner_name = auth.get_username(owner_id)
 
-        print(f"😊 Sentiment Breakdown:")
-        print(f"   Positive: {stats['sentiment_breakdown']['positive']}")
-        print(f"   Negative: {stats['sentiment_breakdown']['negative']}")
-        print(f"   Neutral: {stats['sentiment_breakdown']['neutral']}")
-        print()
+    is_public, share_token = social.get_chat_public_info(chat_id)
+    like_count = social.get_like_count(chat_id)
+    comment_count = social.get_comment_count(chat_id)
 
-        print(f"🔑 Top Keywords:")
-        for keyword, count in keywords:
-            print(f"   {keyword}: {count} times")
-        print()
+    info_col, profile_col = st.columns([5, 1])
+    with info_col:
+        st.markdown(f"##### 👤 by **{owner_name}**  ·  ❤️ {like_count}  ·  💬 {comment_count}")
+    with profile_col:
+        if st.button("View profile →", key=f"{key_prefix}_toprofile_{chat_id}", use_container_width=True):
+            st.session_state.profile_username = owner_name
+            st.session_state.main_view = "profile"
+            st.session_state.explore_view_chat_id = None
+            st.rerun()
+    st.write("---")
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    render_transcript_readonly(history, "mentor")
+    st.write("---")
 
-        analysis_data = {
-            "metadata": {
-                "personality": selected_personality,
-                "timestamp": timestamp,
-                "duration": f"{stats['total_messages']} messages",
-            },
-            "statistics": stats,
-            "top_keywords": [{"word": word, "frequency": count} for word, count in keywords],
-        }
+    render_like_and_share(chat_id, share_token, key_prefix)
+    st.write("")
+    render_comments(chat_id, key_prefix)
 
-        filename = f"chat_analysis_{selected_personality}_{timestamp}.json"
-        with open(filename, "w", encoding="utf-8") as file:
-            json.dump(analysis_data, file, indent=2, ensure_ascii=False)
 
-        print(f"💾 Analysis saved to: {filename}\n")
-        print("Chat end ayyindi. Bye bro! 👋")
-        break
+# ============================================
+# AUTHENTICATION SECTION
+# ============================================
+if not st.session_state.user_id:
 
-    conversation_history.append({"role": "user", "content": user_question})
+    st.write("---")
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=conversation_history
-    )
+    toggle_col1, toggle_col2, _ = st.columns([1, 1, 2])
+    with toggle_col1:
+        if st.button("🔐 Login", use_container_width=True,
+                      type="primary" if st.session_state.auth_view == "login" else "secondary"):
+            st.session_state.auth_view = "login"
+            st.rerun()
+    with toggle_col2:
+        if st.button("📝 Register", use_container_width=True,
+                      type="primary" if st.session_state.auth_view == "register" else "secondary"):
+            st.session_state.auth_view = "register"
+            st.rerun()
 
-    ai_reply = response.choices[0].message.content
-    conversation_history.append({"role": "assistant", "content": ai_reply})
+    st.write("")
 
-    print("\nAI Answer:", ai_reply, "\n")
+    if st.session_state.auth_view == "login":
+        with st.container(border=True):
+            st.subheader("🔐 Welcome back")
+            with st.form("login_form"):
+                username = st.text_input("Username", value=st.session_state.prefill_username)
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login →", use_container_width=True, type="primary")
+
+                if submitted:
+                    success, user_id = auth.login_user(username, password)
+                    if success:
+                        st.session_state.user_id = user_id
+                        st.session_state.username = username
+                        st.session_state.prefill_username = ""
+                        token = auth.create_session(user_id)
+                        st.query_params["token"] = token
+                        st.success("Login successful! Redirecting...")
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid username or password.")
+
+            st.caption("Don't have an account? Click **📝 Register** above.")
+
+    else:
+        with st.container(border=True):
+            st.subheader("📝 Create your account")
+            with st.form("register_form", clear_on_submit=True):
+                new_username = st.text_input("Choose username")
+                new_password = st.text_input("Choose password", type="password")
+                confirm_password = st.text_input("Confirm password", type="password")
+                submitted = st.form_submit_button("Create account →", use_container_width=True, type="primary")
+
+                if submitted:
+                    if not new_username.strip():
+                        st.error("Username cannot be empty!")
+                    elif new_password != confirm_password:
+                        st.error("❌ Passwords don't match!")
+                    elif len(new_password) < 6:
+                        st.error("❌ Password must be at least 6 characters!")
+                    else:
+                        success, message = auth.register_user(new_username, new_password)
+                        if success:
+                            st.session_state["_reg_success"] = new_username
+                        elif message == "USERNAME_EXISTS":
+                            st.session_state["_reg_duplicate"] = new_username
+                        else:
+                            st.error(f"❌ {message}")
+
+            if st.session_state.get("_reg_success"):
+                uname = st.session_state["_reg_success"]
+                st.success(f"🎉 Account created for **{uname}**! You're ready to log in.")
+                st.balloons()
+                if st.button("→ Continue to Login", use_container_width=True, key="goto_login_success"):
+                    st.session_state.prefill_username = uname
+                    st.session_state.auth_view = "login"
+                    del st.session_state["_reg_success"]
+                    st.rerun()
+
+            if st.session_state.get("_reg_duplicate"):
+                uname = st.session_state["_reg_duplicate"]
+                st.warning(f"⚠️ You already have an account with username **{uname}**!")
+                if st.button("→ Go to Login instead", use_container_width=True, key="goto_login_duplicate"):
+                    st.session_state.prefill_username = uname
+                    st.session_state.auth_view = "login"
+                    del st.session_state["_reg_duplicate"]
+                    st.rerun()
+
+
+# ============================================
+# MAIN APP (LOGGED IN)
+# ============================================
+else:
+    # ---- deep link into a shared chat ----
+    if share_token_param:
+        shared = social.get_chat_by_share_token(share_token_param)
+        if shared:
+            st.session_state.main_view = "explore"
+            st.session_state.explore_view_chat_id = shared[0]
+
+    header_col1, header_col2 = st.columns([3, 1])
+    with header_col1:
+        st.markdown(f"### 👋 Welcome, **{st.session_state.username}**")
+    with header_col2:
+        if st.button("🚪 Logout", use_container_width=True):
+            token = st.query_params.get("token")
+            if token:
+                auth.delete_session(token)
+            st.query_params.clear()
+            st.session_state.user_id = None
+            st.session_state.username = None
+            st.session_state.current_chat_id = None
+            st.rerun()
+
+    # ---- top nav: Chats / Explore / Analytics / Notifications ----
+    unread_count = notify.get_unread_count(st.session_state.user_id)
+    nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1, 1, 1, 1, 1.5])
+    with nav_col1:
+        if st.button("💬 Chats", use_container_width=True,
+                      type="primary" if st.session_state.main_view == "chat" else "secondary"):
+            st.session_state.main_view = "chat"
+            st.rerun()
+    with nav_col2:
+        if st.button("🌍 Explore", use_container_width=True,
+                      type="primary" if st.session_state.main_view == "explore" else "secondary"):
+            st.session_state.main_view = "explore"
+            st.rerun()
+    with nav_col3:
+        if st.button("📊 Analytics", use_container_width=True,
+                      type="primary" if st.session_state.main_view == "analytics" else "secondary"):
+            st.session_state.main_view = "analytics"
+            st.rerun()
+    with nav_col4:
+        bell_label = f"🔔 Alerts ({unread_count})" if unread_count else "🔔 Alerts"
+        if st.button(bell_label, use_container_width=True,
+                      type="primary" if st.session_state.main_view == "notifications" else "secondary"):
+            st.session_state.main_view = "notifications"
+            st.rerun()
+
+    st.write("---")
+
+    # ---------------- SIDEBAR (only meaningful for the Chat view) ----------------
+    with st.sidebar:
+        st.markdown("## 💬 Your Chats")
+
+        search_query = st.text_input("🔍 Search chats & messages", placeholder="Type to search...")
+
+        if st.button("➕ New Chat", use_container_width=True, type="primary"):
+            st.session_state.show_new_chat_form = True
+
+        if st.session_state.show_new_chat_form:
+            with st.container(border=True):
+                personality = st.selectbox(
+                    "Choose personality",
+                    list(PERSONALITIES.keys()),
+                    format_func=lambda p: f"{PERSONALITIES[p]['emoji']} {p.replace('_', ' ').title()}",
+                    key="new_chat_personality"
+                )
+                title = st.text_input("Chat title", placeholder="e.g. Python help", key="new_chat_title")
+
+                form_col1, form_col2 = st.columns(2)
+                with form_col1:
+                    if st.button("✅ Create", key="create_chat_btn", use_container_width=True, type="primary"):
+                        chat_id = chats.create_chat(st.session_state.user_id, title, personality)
+                        st.session_state.current_chat_id = chat_id
+                        st.session_state.show_new_chat_form = False
+                        st.session_state.main_view = "chat"
+                        st.rerun()
+                with form_col2:
+                    if st.button("❌ Cancel", key="cancel_chat_btn", use_container_width=True):
+                        st.session_state.show_new_chat_form = False
+                        st.rerun()
+
+        st.write("---")
+
+        if search_query:
+            results = chats.search_messages(st.session_state.user_id, search_query)
+            seen_chats = set()
+            unique_matches = []
+            for chat_id, title, personality, content, role in results:
+                if chat_id not in seen_chats:
+                    seen_chats.add(chat_id)
+                    unique_matches.append((chat_id, title, personality, content))
+
+            st.caption(f"🔎 {len(unique_matches)} chat(s) match \"{search_query}\"")
+
+            for chat_id, title, personality, content in unique_matches:
+                p_info = personality_info(personality)
+                with st.container(border=True):
+                    if st.button(f"{p_info['emoji']} {title or 'Untitled'}",
+                                  key=f"search_{chat_id}", use_container_width=True):
+                        st.session_state.current_chat_id = chat_id
+                        st.session_state.main_view = "chat"
+                        st.rerun()
+                    snippet = content[:80] + ("..." if len(content) > 80 else "")
+                    st.caption(f"💬 {snippet}")
+
+        else:
+            user_chats = chats.get_user_chats(st.session_state.user_id)
+
+            if not user_chats:
+                st.caption("No chats yet. Create one above! 👆")
+
+            for chat_id, title, personality, created_at, is_public in user_chats:
+                p_info = personality_info(personality)
+                is_active = st.session_state.current_chat_id == chat_id
+
+                with st.container(border=True):
+                    row_col1, row_col2 = st.columns([4, 1])
+                    with row_col1:
+                        label = f"{p_info['emoji']} {title or 'Untitled'}"
+                        if st.button(label, key=f"chat_{chat_id}", use_container_width=True,
+                                      type="primary" if is_active else "secondary"):
+                            st.session_state.current_chat_id = chat_id
+                            st.session_state.main_view = "chat"
+                            st.rerun()
+                        badges = (
+                            f'<span class="badge" style="background:{p_info["color"]}">'
+                            f'{personality_label(personality)}</span>'
+                        )
+                        if is_public:
+                            badges += ' <span class="badge-public">🌍 Public</span>'
+                        st.markdown(badges, unsafe_allow_html=True)
+                    with row_col2:
+                        if st.button("🗑️", key=f"delete_{chat_id}", use_container_width=True):
+                            chats.delete_chat(chat_id)
+                            if st.session_state.current_chat_id == chat_id:
+                                st.session_state.current_chat_id = None
+                            st.rerun()
+
+    # ============================================
+    # MAIN AREA — ANALYTICS DASHBOARD
+    # ============================================
+    if st.session_state.main_view == "analytics":
+        data = chats.get_analytics(st.session_state.user_id)
+
+        st.markdown('<p class="section-heading">📊 Your Chatbot Analytics</p>', unsafe_allow_html=True)
+
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">💬</div>
+                    <div class="metric-label">Total Chats</div>
+                    <div class="metric-value">{data['total_chats']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with m2:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">📨</div>
+                    <div class="metric-label">Total Messages</div>
+                    <div class="metric-value">{data['total_messages']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with m3:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">📝</div>
+                    <div class="metric-label">Avg AI Response</div>
+                    <div class="metric-value">{data['avg_response_length']:.0f}<span style="font-size:1rem;color:#9CA3AF;"> words</span></div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+
+        # ---- NEW for Day 9: community stats row ----
+        m4, m5, m6 = st.columns(3)
+        with m4:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">🌍</div>
+                    <div class="metric-label">Public Chats</div>
+                    <div class="metric-value">{data['public_chats']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with m5:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">❤️</div>
+                    <div class="metric-label">Likes Received</div>
+                    <div class="metric-value">{data['likes_received']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with m6:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">💬</div>
+                    <div class="metric-label">Comments Received</div>
+                    <div class="metric-value">{data['comments_received']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+        st.write("---")
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.markdown("#### 🎭 Personality Usage")
+            if data["personality_counts"]:
+                df = pd.DataFrame(data["personality_counts"], columns=["Personality", "Chats"])
+                df["Personality"] = df["Personality"].str.replace("_", " ").str.title()
+                most_used = df.loc[df["Chats"].idxmax(), "Personality"]
+                df = df.set_index("Personality")
+                st.bar_chart(df, color="#FF5A5F")
+                st.success(f"🏆 Most used personality: **{most_used}**")
+            else:
+                st.markdown('<div class="analytics-empty">No data yet — start chatting! 🎭</div>', unsafe_allow_html=True)
+
+        with col_b:
+            st.markdown("#### 📈 Activity Over Time")
+            if data["daily_counts"]:
+                df2 = pd.DataFrame(data["daily_counts"], columns=["Date", "Messages"])
+                df2 = df2.set_index("Date")
+                st.line_chart(df2, color="#FFB84D")
+            else:
+                st.markdown('<div class="analytics-empty">No activity yet. 📈</div>', unsafe_allow_html=True)
+
+    # ============================================
+    # MAIN AREA — EXPLORE (NEW: public community feed)
+    # ============================================
+    elif st.session_state.main_view == "explore":
+
+        if st.session_state.explore_view_chat_id:
+            # ---- single public chat viewer ----
+            if st.button("← Back to Explore"):
+                st.session_state.explore_view_chat_id = None
+                st.query_params.pop("share", None)
+                st.rerun()
+
+            chat_id = st.session_state.explore_view_chat_id
+            conn_check = chats.get_chat_owner(chat_id)
+            if conn_check is None:
+                st.warning("This chat no longer exists.")
+                st.session_state.explore_view_chat_id = None
+            else:
+                user_chats_lookup = chats.get_user_chats(st.session_state.user_id)
+                title, personality = None, "mentor"
+                # pull title/personality regardless of owner via a light query
+                is_public, share_token = social.get_chat_public_info(chat_id)
+                # get title/personality from chats table directly
+                from database import get_connection
+                _conn = get_connection()
+                _row = _conn.execute("SELECT title, personality FROM chats WHERE id = ?", (chat_id,)).fetchone()
+                _conn.close()
+                if _row:
+                    title, personality = _row
+
+                p_info = personality_info(personality)
+                st.markdown(
+                    f'<p class="section-heading">{p_info["emoji"]} {title or "Untitled"}</p>',
+                    unsafe_allow_html=True,
+                )
+                render_public_chat_viewer(chat_id, key_prefix="viewer")
+
+        else:
+            # ---- feed grid ----
+            st.markdown('<p class="section-heading">🌍 Explore the Community</p>', unsafe_allow_html=True)
+
+            top_col1, top_col2 = st.columns([3, 1])
+            with top_col1:
+                feed_search = st.text_input("🔍 Search public chats or authors",
+                                             placeholder="e.g. python, mentor, murthu...",
+                                             label_visibility="collapsed")
+            with top_col2:
+                sort_choice = st.selectbox("Sort by", ["🔥 Popular", "🆕 Recent"], label_visibility="collapsed")
+                st.session_state.explore_sort = "popular" if "Popular" in sort_choice else "recent"
+
+            feed = social.get_public_feed(sort_by=st.session_state.explore_sort,
+                                           search_query=feed_search or None)
+
+            if not feed:
+                st.markdown(
+                    '<div class="empty-feed">🌱 No public chats yet.<br>'
+                    'Publish one of your chats to be the first on the feed!</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                cols = st.columns(3)
+                for idx, (chat_id, title, personality, created_at, owner, like_count, comment_count) in enumerate(feed):
+                    p_info = personality_info(personality)
+                    with cols[idx % 3]:
+                        st.markdown(f"""
+                            <div class="community-card">
+                                <div class="community-title">{p_info['emoji']} {title or 'Untitled'}</div>
+                                <div class="community-author">👤 by {owner}</div>
+                                <span class="badge" style="background:{p_info['color']}">{personality_label(personality)}</span>
+                                <div class="community-stats">
+                                    <span>❤️ {like_count}</span>
+                                    <span>💬 {comment_count}</span>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        view_col, author_col = st.columns([2, 1])
+                        with view_col:
+                            if st.button("👀 View", key=f"feedview_{chat_id}", use_container_width=True):
+                                st.session_state.explore_view_chat_id = chat_id
+                                st.rerun()
+                        with author_col:
+                            if st.button("👤", key=f"feedauthor_{chat_id}", use_container_width=True,
+                                          help=f"View {owner}'s profile"):
+                                st.session_state.profile_username = owner
+                                st.session_state.main_view = "profile"
+                                st.rerun()
+
+    # ============================================
+    # MAIN AREA — NOTIFICATIONS (NEW for Day 10)
+    # ============================================
+    elif st.session_state.main_view == "notifications":
+        st.markdown('<p class="section-heading">🔔 Your Notifications</p>', unsafe_allow_html=True)
+
+        notif_rows = notify.get_notifications(st.session_state.user_id)
+
+        if not notif_rows:
+            st.markdown(
+                '<div class="empty-feed">🔕 No notifications yet.<br>'
+                'Publish a chat to Explore and you\'ll hear about it when people like or comment!</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            if st.button("✅ Mark all as read"):
+                notify.mark_all_read(st.session_state.user_id)
+                st.rerun()
+
+            for n_id, n_type, message, is_read, created_at, n_chat_id, from_user in notif_rows:
+                css_class = "notif-read" if is_read else "notif-unread"
+                icon = "❤️" if n_type == "like" else "💬"
+                st.markdown(
+                    f'<div class="notif-item {css_class}">{icon} {message}'
+                    f'<span class="notif-time">{str(created_at)[:16]}</span></div>',
+                    unsafe_allow_html=True,
+                )
+                jump_col, read_col = st.columns([1, 4])
+                with jump_col:
+                    if st.button("Open chat →", key=f"notif_open_{n_id}"):
+                        if not is_read:
+                            notify.mark_read(n_id)
+                        st.session_state.explore_view_chat_id = n_chat_id
+                        st.session_state.main_view = "explore"
+                        st.rerun()
+
+    # ============================================
+    # MAIN AREA — PUBLIC PROFILE (NEW for Day 10)
+    # ============================================
+    elif st.session_state.main_view == "profile":
+        profile_username = st.session_state.profile_username
+
+        if not profile_username:
+            st.info("No profile selected. Go to 🌍 Explore and click a 👤 icon.")
+        else:
+            back_col, _ = st.columns([1, 4])
+            with back_col:
+                if st.button("← Back to Explore"):
+                    st.session_state.main_view = "explore"
+                    st.rerun()
+
+            st.markdown(
+                f'<div class="profile-header"><span class="profile-avatar">🧑‍💻</span>'
+                f'<p class="section-heading" style="margin:0;">{profile_username}\'s Public Chats</p></div>',
+                unsafe_allow_html=True,
+            )
+
+            profile_chats = social.get_public_chats_by_user(profile_username)
+
+            if not profile_chats:
+                st.markdown(
+                    '<div class="empty-feed">This user hasn\'t published anything yet. 🌱</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                total_likes = sum(row[4] for row in profile_chats)
+                st.caption(f"🌍 {len(profile_chats)} public chat(s)  ·  ❤️ {total_likes} total likes")
+                cols = st.columns(3)
+                for idx, (chat_id, title, personality, created_at, like_count, comment_count) in enumerate(profile_chats):
+                    p_info = personality_info(personality)
+                    with cols[idx % 3]:
+                        st.markdown(f"""
+                            <div class="community-card">
+                                <div class="community-title">{p_info['emoji']} {title or 'Untitled'}</div>
+                                <span class="badge" style="background:{p_info['color']}">{personality_label(personality)}</span>
+                                <div class="community-stats">
+                                    <span>❤️ {like_count}</span>
+                                    <span>💬 {comment_count}</span>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        if st.button("👀 View", key=f"profileview_{chat_id}", use_container_width=True):
+                            st.session_state.explore_view_chat_id = chat_id
+                            st.session_state.main_view = "explore"
+                            st.rerun()
+
+    # ============================================
+    # MAIN AREA — CHAT VIEW
+    # ============================================
+    else:
+        if st.session_state.current_chat_id:
+            from database import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT title, personality FROM chats WHERE id = ?',
+                          (st.session_state.current_chat_id,))
+            chat_info = cursor.fetchone()
+            conn.close()
+
+            if chat_info is None:
+                st.session_state.current_chat_id = None
+                st.rerun()
+
+            title, personality = chat_info
+            chat_id = st.session_state.current_chat_id
+            p_info = personality_info(personality)
+            system_prompt = p_info["prompt"]
+            history = chats.get_chat_history(chat_id)
+            is_public, share_token = social.get_chat_public_info(chat_id)
+
+            # ---- header row with publish + export buttons ----
+            head_col1, head_col2, head_col3, head_col4 = st.columns([2.4, 1, 1, 1])
+            with head_col1:
+                badge = ' <span class="badge-public">🌍 Public</span>' if is_public else ""
+                st.markdown(
+                    f'#### {p_info["emoji"]} {title or "Untitled"} '
+                    f'<span class="badge" style="background:{p_info["color"]}">'
+                    f'{personality_label(personality)}</span>{badge}',
+                    unsafe_allow_html=True
+                )
+            with head_col2:
+                publish_label = "🌍 Unpublish" if is_public else "📢 Publish"
+                if st.button(publish_label, use_container_width=True, key=f"publish_{chat_id}"):
+                    social.set_chat_public(chat_id, not is_public)
+                    st.rerun()
+            with head_col3:
+                json_data = export_chat_json(title, personality, history)
+                st.download_button("⬇️ JSON", data=json_data,
+                                    file_name=f"{title or 'chat'}.json",
+                                    mime="application/json", use_container_width=True,
+                                    disabled=len(history) == 0)
+            with head_col4:
+                if history:
+                    try:
+                        pdf_bytes = export_chat_pdf(title, personality, history)
+                        st.download_button("⬇️ PDF", data=pdf_bytes,
+                                            file_name=f"{title or 'chat'}.pdf",
+                                            mime="application/pdf", use_container_width=True)
+                    except Exception as e:
+                        st.button("⬇️ PDF", use_container_width=True, disabled=True)
+                        st.caption(f"⚠️ PDF export failed: {e}")
+                else:
+                    st.button("⬇️ PDF", use_container_width=True, disabled=True)
+
+            # ---- NEW for Day 9: like/share/comments strip when a chat is public ----
+            if is_public:
+                st.write("")
+                with st.expander(f"🌍 Community activity — ❤️ {social.get_like_count(chat_id)} · 💬 {social.get_comment_count(chat_id)}", expanded=False):
+                    render_like_and_share(chat_id, share_token, key_prefix="own")
+                    st.write("")
+                    render_comments(chat_id, key_prefix="own")
+
+            st.write("---")
+
+            for role, content in history:
+                if role == "user":
+                    st.chat_message("user", avatar="🧑").write(content)
+                else:
+                    st.chat_message("assistant", avatar=p_info["emoji"]).write(content)
+
+            user_input = st.chat_input("Type your message...")
+
+            if user_input:
+                chats.save_message(chat_id, "user", user_input)
+                st.chat_message("user", avatar="🧑").write(user_input)
+
+                with st.spinner(f"{p_info['emoji']} Thinking..."):
+                    messages = [{"role": "system", "content": system_prompt}]
+                    for role, content in history:
+                        messages.append({"role": role, "content": content})
+                    messages.append({"role": "user", "content": user_input})
+
+                    try:
+                        response = client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=messages
+                        )
+                        ai_reply = response.choices[0].message.content
+                    except Exception as e:
+                        ai_reply = f"⚠️ Error getting AI response: {str(e)}"
+
+                    chats.save_message(chat_id, "assistant", ai_reply)
+                    st.chat_message("assistant", avatar=p_info["emoji"]).write(ai_reply)
+
+                st.rerun()
+
+        else:
+            st.info("👈 Select a chat from the sidebar, create a new one, or check out 🌍 **Explore** to see what the community is building!")
