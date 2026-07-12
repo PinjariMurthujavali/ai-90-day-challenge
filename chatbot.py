@@ -25,6 +25,7 @@ import auth
 import chat_service as chats
 import social_service as social
 import notification_service as notify
+import stats_service as stats
 from export_utils import export_chat_json, export_chat_pdf
 
 load_dotenv()
@@ -51,6 +52,7 @@ st.markdown(
     '<p class="sub-title">Search. Export. Analyze. Share. Your multi-user AI chat community, now with superpowers.</p>',
     unsafe_allow_html=True,
 )
+st.caption(f"👀 {stats.get_total_visits():,} visits  ·  🖱️ {stats.get_total_clicks():,} clicks")
 
 
 # ============================================
@@ -72,6 +74,13 @@ defaults = {
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+# ---- NEW: permanent site-wide visit + click tracking ----
+if "_visited" not in st.session_state:
+    st.session_state._visited = True
+    stats.record_visit()          # first script run in this browser session = 1 visit
+else:
+    stats.record_click()          # every rerun after that = a click/interaction
 
 # ---- auto-login from a persistent session token in the URL ----
 if not st.session_state.user_id:
