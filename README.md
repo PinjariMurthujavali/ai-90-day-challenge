@@ -529,7 +529,6 @@ Now you know how.
 
 ## 🔗 Links
 
-- **GitHub Repo:** [day-12-chatbot](https://github.com/PinjariMurthujavali/day-12-chatbot)
 - **Main Challenge:** [ai-90-day-challenge](https://github.com/PinjariMurthujavali/ai-90-day-challenge)
 - **Discord Docs:** [https://discord.com/developers](https://discord.com/developers)
 - **Slack Webhooks:** [https://api.slack.com/messaging/webhooks](https://api.slack.com/messaging/webhooks)
