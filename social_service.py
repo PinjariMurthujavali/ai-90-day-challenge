@@ -2,9 +2,17 @@
 # Day 9: social_service.py  (NEW FILE)
 # The "advanced level" features: publish a chat to the
 # community feed, like it, comment on it, and share it.
+#
+# UPDATED (speed fix): get_public_feed, get_comments, and the count
+# getters were running fresh, uncached queries on every single rerun.
+# Now cached for a few seconds with st.cache_data, and every write
+# (toggle_like, add_comment, delete_comment, set_chat_public) clears
+# the relevant cache so your own actions always show up instantly.
 # ============================================
 
 import secrets
+
+import streamlit as st
 
 from database import get_connection
 import notification_service as notify
@@ -29,8 +37,11 @@ def set_chat_public(chat_id, is_public):
 
     conn.commit()
     conn.close()
+    get_chat_public_info.clear()
+    get_public_feed.clear()
 
 
+@st.cache_data(ttl=10)
 def get_chat_public_info(chat_id):
     """Returns (is_public, share_token) for a chat."""
     conn = get_connection()
@@ -72,6 +83,8 @@ def toggle_like(chat_id, user_id):
 
     conn.commit()
     conn.close()
+    get_like_count.clear()
+    get_public_feed.clear()
 
     if liked:
         cursor2 = get_connection()
@@ -98,6 +111,7 @@ def has_liked(chat_id, user_id):
     return row is not None
 
 
+@st.cache_data(ttl=10)
 def get_like_count(chat_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -119,6 +133,9 @@ def add_comment(chat_id, user_id, content):
                    (chat_id, user_id, content))
     conn.commit()
     conn.close()
+    get_comments.clear()
+    get_comment_count.clear()
+    get_public_feed.clear()
 
     conn2 = get_connection()
     owner_row = conn2.execute('SELECT user_id, title FROM chats WHERE id = ?', (chat_id,)).fetchone()
@@ -136,6 +153,7 @@ def add_comment(chat_id, user_id, content):
     return True
 
 
+@st.cache_data(ttl=8)
 def get_comments(chat_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -149,6 +167,7 @@ def get_comments(chat_id):
     return rows
 
 
+@st.cache_data(ttl=10)
 def get_comment_count(chat_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -166,10 +185,14 @@ def delete_comment(comment_id, requesting_user_id):
                    (comment_id, requesting_user_id))
     conn.commit()
     conn.close()
+    get_comments.clear()
+    get_comment_count.clear()
+    get_public_feed.clear()
 
 
 # ---- NEW for Day 10: a single author's public profile ----
 
+@st.cache_data(ttl=15)
 def get_public_chats_by_user(username):
     conn = get_connection()
     cursor = conn.cursor()
@@ -192,6 +215,7 @@ def get_public_chats_by_user(username):
 
 # ---- the public feed / "Explore" gallery ----
 
+@st.cache_data(ttl=10)
 def get_public_feed(sort_by="popular", search_query=None):
     """Returns a list of public chats with like/comment counts and owner info.
     sort_by: 'popular' (most liked) or 'recent' (newest first)."""
