@@ -96,6 +96,14 @@ class _SharedCursor:
     def fetchall(self):
         return self._cur.fetchall()
 
+    @property
+    def lastrowid(self):
+        return self._cur.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
 
 class _SharedConnection:
     """One real connection, reused for the life of the process/session.
