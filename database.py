@@ -13,13 +13,26 @@
 # file automatically when running on your own machine without
 # those secrets set, so local dev still works unchanged.
 #
-# UPDATED AGAIN: the remote Turso connection (Hrana/HTTP) can
-# drop its "stream" if a single connection is kept open across
-# many sequential statements, causing
-# `ValueError: Hrana: stream not found`. init_database() now
-# opens a FRESH connection for every single statement, which
-# sidesteps that entirely — a little slower at startup, but
-# startup only happens once per app boot, so it's fine.
+# UPDATED AGAIN (perf fix — this was making the whole app feel
+# slow): get_connection() used to open a BRAND NEW network
+# connection to Turso for every single query — and it's called
+# from ~46 places across auth/chat/social/notify/stats, all of
+# which fire on every Streamlit rerun (every click). That's
+# 15-20+ fresh remote handshakes per interaction.
+#
+# Fix: get_connection() now returns ONE cached, shared connection
+# per app process (per-Streamlit-session when running under
+# Streamlit, via st.cache_resource) and reuses it for every query.
+# Every existing call site still does `conn = get_connection()` /
+# `conn.close()` exactly as before — .close() is now a safe no-op
+# on the shared connection, so nothing else needed to change.
+#
+# To keep the earlier "Hrana: stream not found" fix (which is why
+# fresh connections were introduced in the first place), the
+# returned connection is self-healing: if a query fails because the
+# remote Turso stream died from being idle, it transparently opens
+# a fresh real connection and retries once, instead of every caller
+# having to pay for a fresh connection on every single query.
 # ============================================
 
 import sqlite3
@@ -27,25 +40,29 @@ import sqlite3
 DB_FILE = "chatbot.db"
 
 
-def get_connection():
-    """Single place that opens a DB connection so every module
-    talks to the same database with the same settings.
-
-    Uses Turso (persistent cloud SQLite) in production when secrets
-    are configured; falls back to a local file otherwise."""
+def _get_turso_secrets():
+    """Reads Turso credentials from Streamlit secrets when running under
+    Streamlit, or from environment variables otherwise (e.g. the Flask
+    scripts / api_day13_complete.py / webhooks.py import this module too)."""
     try:
         import streamlit as st
-        turso_url = st.secrets.get("TURSO_DATABASE_URL")
-        turso_token = st.secrets.get("TURSO_AUTH_TOKEN")
+        return st.secrets.get("TURSO_DATABASE_URL"), st.secrets.get("TURSO_AUTH_TOKEN")
     except Exception:
-        turso_url = None
-        turso_token = None
+        import os
+        return os.getenv("TURSO_DATABASE_URL"), os.getenv("TURSO_AUTH_TOKEN")
+
+
+def _open_raw_connection():
+    """Actually opens a new physical connection. Only called once at
+    startup, and again later ONLY if the shared connection needs to
+    self-heal after a dead/expired remote stream."""
+    turso_url, turso_token = _get_turso_secrets()
 
     if turso_url and turso_token:
         import libsql
         conn = libsql.connect(database=turso_url, auth_token=turso_token)
     else:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 
     try:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -54,11 +71,99 @@ def get_connection():
     return conn
 
 
+class _SharedCursor:
+    """Wraps a real cursor. If the underlying execute() fails because the
+    remote Turso stream went stale, transparently reconnects the shared
+    connection and retries the exact same statement once before giving up."""
+
+    def __init__(self, parent):
+        self._parent = parent
+        self._cur = None
+
+    def execute(self, sql, params=()):
+        try:
+            self._cur = self._parent._real.cursor()
+            self._cur.execute(sql, params or ())
+        except Exception:
+            self._parent._reconnect()
+            self._cur = self._parent._real.cursor()
+            self._cur.execute(sql, params or ())
+        return self
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+
+class _SharedConnection:
+    """One real connection, reused for the life of the process/session.
+    Existing code everywhere calls conn.close() after each query the way
+    it did with the old fresh-connection-per-query design — that's kept
+    working on purpose (as a no-op) so none of the 7 files that already
+    call get_connection() needed to change."""
+
+    def __init__(self):
+        self._real = _open_raw_connection()
+
+    def cursor(self):
+        return _SharedCursor(self)
+
+    def execute(self, sql, params=()):
+        return self.cursor().execute(sql, params)
+
+    def commit(self):
+        try:
+            self._real.commit()
+        except Exception:
+            self._reconnect()
+            self._real.commit()
+
+    def close(self):
+        # No-op on purpose — this connection is shared/cached and stays
+        # open for the next query. See module docstring above.
+        pass
+
+    def _reconnect(self):
+        try:
+            self._real.close()
+        except Exception:
+            pass
+        self._real = _open_raw_connection()
+
+
+# ---- caching layer: ONE shared connection per process ----
+try:
+    import streamlit as st
+
+    @st.cache_resource(show_spinner=False)
+    def _cached_connection():
+        return _SharedConnection()
+
+    def get_connection():
+        """Single place that opens a DB connection so every module talks
+        to the same database with the same settings. Cached via
+        st.cache_resource so this is created ONCE per app process, not on
+        every rerun/click — this is the main speed fix."""
+        return _cached_connection()
+
+except Exception:
+    # Running outside Streamlit (Flask scripts, test.py, etc.) — fall back
+    # to a plain module-level cached connection instead.
+    _fallback_connection = None
+
+    def get_connection():
+        global _fallback_connection
+        if _fallback_connection is None:
+            _fallback_connection = _SharedConnection()
+        return _fallback_connection
+
+
 def _run(sql, params=None, ignore_errors=False, retries=3):
-    """Run ONE statement on its OWN fresh connection + commit + close.
-    Avoids the Turso/Hrana 'stream not found' error that happens when a
-    single connection is reused across many statements. Retries a few
-    times on transient network hiccups."""
+    """Run ONE write statement + commit using the shared connection.
+    Retries a few times on transient network hiccups (self-healing
+    reconnect already happens inside _SharedConnection/_SharedCursor)."""
     last_err = None
     for attempt in range(retries):
         try:
@@ -66,7 +171,6 @@ def _run(sql, params=None, ignore_errors=False, retries=3):
             cur = conn.cursor()
             cur.execute(sql, params or ())
             conn.commit()
-            conn.close()
             return
         except Exception as e:
             last_err = e
@@ -76,7 +180,7 @@ def _run(sql, params=None, ignore_errors=False, retries=3):
 
 
 def _query(sql, params=None, retries=3):
-    """Run ONE read query on its own fresh connection and return fetchall()."""
+    """Run ONE read query using the shared connection and return fetchall()."""
     last_err = None
     for attempt in range(retries):
         try:
@@ -84,7 +188,6 @@ def _query(sql, params=None, retries=3):
             cur = conn.cursor()
             cur.execute(sql, params or ())
             rows = cur.fetchall()
-            conn.close()
             return rows
         except Exception as e:
             last_err = e
@@ -98,12 +201,8 @@ _already_initialized = False
 def init_database():
     # Streamlit reruns the WHOLE script on every click/interaction, and this
     # function was being called at the top of chatbot.py every single time —
-    # hammering Turso with 20+ fresh network requests per click, which is
-    # both slow and triggers "stream not found" errors under load.
-    # A Python module is only imported/executed ONCE per running process,
-    # so this module-level flag correctly persists across every Streamlit
-    # rerun and every user session in this container — the 20+ statements
-    # below now really do run only once per app boot.
+    # this flag makes sure the 20+ CREATE TABLE statements below only ever
+    # run once per app boot, on the (now shared and fast) connection.
     global _already_initialized
     if _already_initialized:
         return
