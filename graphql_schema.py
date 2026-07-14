@@ -3,7 +3,6 @@
 # ============================================
 
 import graphene
-from graphene_sqlalchemy import SQLAlchemyObjectType
 import sqlite3
 from datetime import datetime
 from functools import lru_cache
