@@ -4,7 +4,6 @@
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from graphene_django.rest_framework.views import GraphQLView
 from graphql_schema import schema
 from cache_layer import cache_manager, CacheInvalidator, get_cache_status, warm_cache
 import sqlite3
@@ -24,7 +23,7 @@ DB_FILE = "chatbot.db"
 def graphql_view():
     """GraphQL endpoint"""
     from graphene import Schema
-    from graphql_core import graphql_sync
+    from graphql import graphql_sync
     from graphql_schema import Query
     
     query_string = request.args.get('query') or (request.json.get('query') if request.json else '')
