@@ -3,9 +3,21 @@
 # Everything about a single user's own chats: create, list,
 # save/read messages, search, delete, and analytics.
 # (This is the Day 7-8 logic, pulled out of chatbot.py.)
+#
+# UPDATED (speed fix): get_user_chats() and get_analytics() were
+# running on EVERY Streamlit rerun with zero caching — get_analytics()
+# alone fires 8 sequential queries. Over a remote Turso DB, that's
+# 8 network round-trips just to draw one tab, on every single click,
+# which is the main reason the app still felt slow even after the
+# shared-connection fix. Both are now cached for a few seconds with
+# st.cache_data, and every function that changes the underlying data
+# (create_chat / delete_chat / save_message) explicitly clears the
+# relevant cache so you never see stale data after your own action.
 # ============================================
 
 import secrets
+
+import streamlit as st
 
 from database import get_connection
 
@@ -18,9 +30,11 @@ def create_chat(user_id, title, personality):
     chat_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    get_user_chats.clear()
     return chat_id
 
 
+@st.cache_data(ttl=8)
 def get_user_chats(user_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -49,6 +63,7 @@ def save_message(chat_id, role, content):
                    (chat_id, role, content))
     conn.commit()
     conn.close()
+    get_analytics.clear()
 
 
 def get_chat_history(chat_id):
@@ -70,6 +85,8 @@ def delete_chat(chat_id):
     cursor.execute('DELETE FROM chats WHERE id = ?', (chat_id,))
     conn.commit()
     conn.close()
+    get_user_chats.clear()
+    get_analytics.clear()
 
 
 # ---- search across all of a user's own chats + messages ----
@@ -91,6 +108,7 @@ def search_messages(user_id, query):
 
 # ---- analytics ----
 
+@st.cache_data(ttl=15)
 def get_analytics(user_id):
     conn = get_connection()
     cursor = conn.cursor()
