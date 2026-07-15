@@ -104,7 +104,9 @@ if not st.session_state.user_id:
     # expected_state is None here — still safe to proceed, since `code` is
     # a single-use token Google only just issued to this browser.
     state_ok = (expected_state is None) or (oauth_state == expected_state)
-    if oauth_code and state_ok:
+    already_processed = st.session_state.get("_oauth_code_seen") == oauth_code
+    if oauth_code and state_ok and not already_processed:
+        st.session_state["_oauth_code_seen"] = oauth_code
         try:
             get_redirect_uri = getattr(oauth, "get_configured_redirect_uri", None)
             if get_redirect_uri is None:
