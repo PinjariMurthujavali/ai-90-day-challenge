@@ -106,7 +106,14 @@ if not st.session_state.user_id:
     state_ok = (expected_state is None) or (oauth_state == expected_state)
     if oauth_code and state_ok:
         try:
-            redirect_uri = oauth.get_configured_redirect_uri()
+            get_redirect_uri = getattr(oauth, "get_configured_redirect_uri", None)
+            if get_redirect_uri is None:
+                raise RuntimeError(
+                    "oauth module is out of date on this deployment "
+                    "(missing get_configured_redirect_uri) — push oauth.py to "
+                    "GitHub and reboot the app on Streamlit Cloud."
+                )
+            redirect_uri = get_redirect_uri()
             access_token = oauth.exchange_code_for_token(oauth_code, redirect_uri)
             info = oauth.fetch_google_userinfo(access_token)
             user_id, username = oauth.login_or_create_oauth_user(
