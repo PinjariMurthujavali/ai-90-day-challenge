@@ -113,7 +113,12 @@ if not st.session_state.user_id:
                     "(missing get_configured_redirect_uri) — push oauth.py to "
                     "GitHub and reboot the app on Streamlit Cloud."
                 )
-            redirect_uri = get_redirect_uri()
+            # Prefer the exact redirect_uri we used when building the Google
+            # auth URL (saved in session_state) — this MUST match byte-for-byte
+            # what Google issued the code for, or the token exchange 400s.
+            redirect_uri = st.session_state.get("_oauth_redirect_uri") or get_redirect_uri()
+            if not redirect_uri and hasattr(st, "context"):
+                redirect_uri = st.context.headers.get("Origin", "")
             access_token = oauth.exchange_code_for_token(oauth_code, redirect_uri)
             info = oauth.fetch_google_userinfo(access_token)
             user_id, username = oauth.login_or_create_oauth_user(
@@ -288,6 +293,7 @@ if not st.session_state.user_id:
                 if redirect_uri:
                     auth_url, state = oauth.build_google_auth_url(redirect_uri)
                     st.session_state["_oauth_state"] = state
+                    st.session_state["_oauth_redirect_uri"] = redirect_uri
                     st.link_button("🔵 Sign in with Google", auth_url, use_container_width=True)
                 else:
                     st.caption("⚠️ Google sign-in needs GOOGLE_REDIRECT_URI configured.")
