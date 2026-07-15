@@ -91,7 +91,13 @@ def exchange_code_for_token(code, redirect_uri):
         },
         timeout=10,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        try:
+            detail = resp.json()
+            reason = detail.get("error_description") or detail.get("error") or resp.text
+        except Exception:
+            reason = resp.text
+        raise RuntimeError(f"Google token exchange failed ({resp.status_code}): {reason}")
     return resp.json()["access_token"]
 
 
