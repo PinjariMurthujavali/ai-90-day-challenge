@@ -22,6 +22,7 @@ from styles import APP_CSS
 from config import PERSONALITIES, personality_info, personality_label
 
 import auth
+import oauth
 import chat_service as chats
 import social_service as social
 import notification_service as notify
@@ -91,6 +92,31 @@ if not st.session_state.user_id:
         if user:
             st.session_state.user_id = user[0]
             st.session_state.username = user[1]
+
+# ---- Day 14: Google OAuth2 callback (?code=...&state=...) ----
+if not st.session_state.user_id:
+    oauth_code = st.query_params.get("code")
+    oauth_state = st.query_params.get("state")
+    if oauth_code and oauth_state and oauth_state == st.session_state.get("_oauth_state"):
+        try:
+            redirect_uri = st.session_state.get("_oauth_redirect_uri")
+            access_token = oauth.exchange_code_for_token(oauth_code, redirect_uri)
+            info = oauth.fetch_google_userinfo(access_token)
+            user_id, username = oauth.login_or_create_oauth_user(
+                provider="google",
+                oauth_id=info["sub"],
+                email=info.get("email"),
+                name=info.get("name") or info.get("email"),
+                avatar_url=info.get("picture"),
+            )
+            st.session_state.user_id = user_id
+            st.session_state.username = username
+            token = auth.create_session(user_id)
+            st.query_params.clear()
+            st.query_params["token"] = token
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Google sign-in failed: {e}")
 
 # ---- deep link: ?share=<token> opens a public chat straight into Explore ----
 share_token_param = st.query_params.get("share")
@@ -238,6 +264,19 @@ if not st.session_state.user_id:
                         st.error("❌ Invalid username or password.")
 
             st.caption("Don't have an account? Click **📝 Register** above.")
+
+            if oauth.is_google_oauth_configured():
+                st.write("")
+                st.caption("— or —")
+                base_url = st.context.headers.get("Origin", "") if hasattr(st, "context") else ""
+                redirect_uri = base_url or os.getenv("GOOGLE_REDIRECT_URI", "")
+                if redirect_uri:
+                    auth_url, state = oauth.build_google_auth_url(redirect_uri)
+                    st.session_state["_oauth_state"] = state
+                    st.session_state["_oauth_redirect_uri"] = redirect_uri
+                    st.link_button("🔵 Sign in with Google", auth_url, use_container_width=True)
+                else:
+                    st.caption("⚠️ Google sign-in needs GOOGLE_REDIRECT_URI configured.")
 
     else:
         with st.container(border=True):
