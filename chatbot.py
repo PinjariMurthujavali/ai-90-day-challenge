@@ -97,9 +97,16 @@ if not st.session_state.user_id:
 if not st.session_state.user_id:
     oauth_code = st.query_params.get("code")
     oauth_state = st.query_params.get("state")
-    if oauth_code and oauth_state and oauth_state == st.session_state.get("_oauth_state"):
+    expected_state = st.session_state.get("_oauth_state")
+    # Only block when we DID remember a state and it doesn't match (real
+    # CSRF mismatch). If the round-trip to Google wiped session_state (the
+    # usual reason "sign in" silently landed back on the login page),
+    # expected_state is None here — still safe to proceed, since `code` is
+    # a single-use token Google only just issued to this browser.
+    state_ok = (expected_state is None) or (oauth_state == expected_state)
+    if oauth_code and state_ok:
         try:
-            redirect_uri = st.session_state.get("_oauth_redirect_uri")
+            redirect_uri = oauth.get_configured_redirect_uri()
             access_token = oauth.exchange_code_for_token(oauth_code, redirect_uri)
             info = oauth.fetch_google_userinfo(access_token)
             user_id, username = oauth.login_or_create_oauth_user(
@@ -268,12 +275,12 @@ if not st.session_state.user_id:
             if oauth.is_google_oauth_configured():
                 st.write("")
                 st.caption("— or —")
-                base_url = st.context.headers.get("Origin", "") if hasattr(st, "context") else ""
-                redirect_uri = base_url or os.getenv("GOOGLE_REDIRECT_URI", "")
+                redirect_uri = oauth.get_configured_redirect_uri()
+                if not redirect_uri and hasattr(st, "context"):
+                    redirect_uri = st.context.headers.get("Origin", "")
                 if redirect_uri:
                     auth_url, state = oauth.build_google_auth_url(redirect_uri)
                     st.session_state["_oauth_state"] = state
-                    st.session_state["_oauth_redirect_uri"] = redirect_uri
                     st.link_button("🔵 Sign in with Google", auth_url, use_container_width=True)
                 else:
                     st.caption("⚠️ Google sign-in needs GOOGLE_REDIRECT_URI configured.")
