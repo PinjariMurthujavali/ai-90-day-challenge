@@ -153,7 +153,7 @@ def login_or_create_oauth_user(provider, oauth_id, email, name, avatar_url=None)
     cursor = conn.cursor()
     cursor.execute(
         '''INSERT INTO users (username, password_hash, email, oauth_provider, oauth_id, avatar_url)
-           VALUES (?, NULL, ?, ?, ?, ?)''',
+           VALUES (?, '', ?, ?, ?, ?)''',
         (username, email, provider, oauth_id, avatar_url),
     )
     conn.commit()
