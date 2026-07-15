@@ -47,6 +47,14 @@ def is_google_oauth_configured():
     return bool(_get_secret("GOOGLE_CLIENT_ID") and _get_secret("GOOGLE_CLIENT_SECRET"))
 
 
+def get_configured_redirect_uri():
+    """Reads GOOGLE_REDIRECT_URI from Streamlit Secrets (deployed) or the
+    environment (local .env). This MUST be used everywhere the redirect URI
+    is needed — both when building the Google auth URL and when handling
+    the callback — so the two never disagree with each other."""
+    return _get_secret("GOOGLE_REDIRECT_URI") or ""
+
+
 def build_google_auth_url(redirect_uri, state=None):
     """Returns (url, state). Pass the same `state` back in on the callback
     to protect against CSRF - store it in st.session_state before redirecting."""
