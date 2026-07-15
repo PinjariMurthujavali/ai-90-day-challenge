@@ -272,10 +272,10 @@ if not st.session_state.user_id:
 
             st.caption("Don't have an account? Click **📝 Register** above.")
 
-            if oauth.is_google_oauth_configured():
+            if hasattr(oauth, "is_google_oauth_configured") and oauth.is_google_oauth_configured():
                 st.write("")
                 st.caption("— or —")
-                redirect_uri = oauth.get_configured_redirect_uri()
+                redirect_uri = getattr(oauth, "get_configured_redirect_uri", lambda: "")()
                 if not redirect_uri and hasattr(st, "context"):
                     redirect_uri = st.context.headers.get("Origin", "")
                 if redirect_uri:
