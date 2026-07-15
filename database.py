@@ -220,10 +220,49 @@ def init_database():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
+            password_hash TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Day 14: OAuth2 login (Google). Existing DBs were created with
+    # password_hash NOT NULL and no oauth_* columns — ALTER TABLE ADD COLUMN
+    # is the only safe way to extend an existing SQLite/Turso table without
+    # a destructive rebuild, so we add the new columns defensively and
+    # ignore the "duplicate column" error on every boot after the first.
+    _run("ALTER TABLE users ADD COLUMN email TEXT", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN oauth_provider TEXT", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN oauth_id TEXT", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN avatar_url TEXT", ignore_errors=True)
+
+    # Older DBs were created before OAuth existed, with password_hash NOT
+    # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
+    # if we detect that old constraint we rebuild the table (same trick
+    # SQLite itself recommends: new table -> copy rows -> swap names).
+    try:
+        col_info = _query("PRAGMA table_info(users)")
+        password_col = next((c for c in col_info if c[1] == "password_hash"), None)
+        if password_col and password_col[3]:  # column[3] = notnull flag
+            _run('''
+                CREATE TABLE users_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    email TEXT,
+                    oauth_provider TEXT,
+                    oauth_id TEXT,
+                    avatar_url TEXT
+                )
+            ''')
+            _run('''
+                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url)
+                SELECT id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url FROM users
+            ''')
+            _run("DROP TABLE users")
+            _run("ALTER TABLE users_new RENAME TO users")
+    except Exception:
+        pass
 
     _run('''
         CREATE TABLE IF NOT EXISTS chats (
