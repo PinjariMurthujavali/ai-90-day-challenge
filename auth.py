@@ -59,6 +59,17 @@ def get_username(user_id):
     return row[0] if row else "Unknown"
 
 
+def get_avatar_url(user_id):
+    """Google profile picture for OAuth users, None for username/password
+    accounts (the UI falls back to a plain emoji avatar in that case)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT avatar_url FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
 def get_user_id_by_username(username):
     conn = get_connection()
     cursor = conn.cursor()
