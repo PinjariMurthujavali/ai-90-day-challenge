@@ -226,5 +226,29 @@ APP_CSS = """
         text-align: center;
         color: #9CA3AF;
     }
+
+    /* ---------- NEW for Day 16: real-time live badge ---------- */
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: rgba(16,185,129,0.14);
+        border: 1px solid rgba(16,185,129,0.4);
+        color: #34D399;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 2px 10px;
+        border-radius: 999px;
+        vertical-align: middle;
+        animation: live-pulse 2s ease-in-out infinite;
+    }
+    @keyframes live-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); }
+        70%  { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+        100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    }
+
+    /* ---------- NEW for Day 16: nav buttons feel snappier ---------- */
+    .stButton > button:active { transform: translateY(0px) scale(0.98); }
 </style>
 """
