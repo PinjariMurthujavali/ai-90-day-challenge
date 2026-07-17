@@ -373,12 +373,16 @@ else:
             counted.add(profile_param)
 
     # ---- Day 16: real-time feel — auto-rerun the script every few seconds
-    # while looking at Chat / Explore / Notifications, so new messages,
-    # likes, comments and alerts from other users show up without a manual
-    # refresh. (True push-based WebSockets aren't practical inside Streamlit's
-    # request/response model — this polling approach gets the same live
-    # experience for users, at a fraction of the infra.)
-    live_views = ("chat", "explore", "notifications")
+    # while looking at Explore / Notifications, so new likes, comments and
+    # alerts from other users show up without a manual refresh.
+    #
+    # FIX: "chat" was in this list originally, and it broke sending messages —
+    # the AI reply call (client.chat.completions.create) can take longer than
+    # one refresh tick, and the autorefresh-triggered rerun cancels that
+    # in-flight run, so the reply never got saved/shown. Your own chat window
+    # is single-user anyway (nothing external to "poll" while you're mid
+    # conversation), so it doesn't need live-refresh — only Explore/Notifications do.
+    live_views = ("explore", "notifications")
     is_live = st.session_state.main_view in live_views
     if is_live:
         st_autorefresh(interval=6000, key="live_refresh_tick")
