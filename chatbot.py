@@ -12,6 +12,7 @@
 # ============================================
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 from groq import Groq
 from dotenv import load_dotenv
@@ -371,9 +372,31 @@ else:
             profile_stats.record_profile_view(profile_param, source)
             counted.add(profile_param)
 
+    # ---- Day 16: real-time feel — auto-rerun the script every few seconds
+    # while looking at Chat / Explore / Notifications, so new messages,
+    # likes, comments and alerts from other users show up without a manual
+    # refresh. (True push-based WebSockets aren't practical inside Streamlit's
+    # request/response model — this polling approach gets the same live
+    # experience for users, at a fraction of the infra.)
+    live_views = ("chat", "explore", "notifications")
+    is_live = st.session_state.main_view in live_views
+    if is_live:
+        st_autorefresh(interval=6000, key="live_refresh_tick")
+
     header_col1, header_col2 = st.columns([3, 1])
     with header_col1:
-        st.markdown(f"### 👋 Welcome, **{st.session_state.username}**")
+        avatar_url = auth.get_avatar_url(st.session_state.user_id)
+        name_html = f'👋 Welcome, **{st.session_state.username}**'
+        if is_live:
+            name_html += '&nbsp;&nbsp;<span class="live-badge">🟢 Live</span>'
+        if avatar_url:
+            av_col, txt_col = st.columns([1, 9])
+            with av_col:
+                st.image(avatar_url, width=38)
+            with txt_col:
+                st.markdown(f"### {name_html}", unsafe_allow_html=True)
+        else:
+            st.markdown(f"### {name_html}", unsafe_allow_html=True)
     with header_col2:
         if st.button("🚪 Logout", use_container_width=True):
             token = st.query_params.get("token")
