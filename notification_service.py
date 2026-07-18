@@ -7,6 +7,7 @@
 import streamlit as st
 
 from database import get_connection
+import email_service
 
 
 def _ensure_table():
@@ -46,6 +47,20 @@ def create_notification(user_id, from_user_id, chat_id, ntype, message):
     ''', (user_id, from_user_id, chat_id, ntype, message))
     conn.commit()
     conn.close()
+
+    # ---- Day 17: best-effort email — only if the recipient opted in AND
+    # SMTP is actually configured. Never let a slow/broken mail server
+    # block or crash the in-app notification, which is the part that
+    # matters most and just happened above regardless of what follows.
+    if email_service.is_configured():
+        try:
+            import auth
+            email, enabled = auth.get_email_settings(user_id)
+            if enabled and email:
+                username = auth.get_username(user_id)
+                email_service.send_activity_email(email, username, message)
+        except Exception:
+            pass
 
 
 def get_notifications(user_id, limit=25):
