@@ -24,6 +24,7 @@ from config import PERSONALITIES, personality_info, personality_label
 
 import auth
 import oauth
+import email_service
 import chat_service as chats
 import social_service as social
 import notification_service as notify
@@ -250,100 +251,156 @@ if not st.session_state.user_id:
 
     st.write("---")
 
-    toggle_col1, toggle_col2, _ = st.columns([1, 1, 2])
-    with toggle_col1:
-        if st.button("🔐 Login", use_container_width=True,
-                      type="primary" if st.session_state.auth_view == "login" else "secondary"):
-            st.session_state.auth_view = "login"
-            st.rerun()
-    with toggle_col2:
-        if st.button("📝 Register", use_container_width=True,
-                      type="primary" if st.session_state.auth_view == "register" else "secondary"):
-            st.session_state.auth_view = "register"
-            st.rerun()
+    hero_col, form_col = st.columns([1, 1.05], gap="large")
 
-    st.write("")
+    with hero_col:
+        st.markdown("""
+            <div class="auth-hero">
+                <span class="auth-hero-badge">🚀 90-Day Build Challenge · Day 17</span>
+                <h2 class="auth-hero-title">Your AI conversations,<br>built to be shared.</h2>
+                <p class="auth-hero-sub">
+                    Chat with focused AI personalities, publish your best threads to the
+                    community, and track every like, comment and view — all in one place.
+                </p>
+                <div class="auth-feature-row">
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">💬</span>
+                        <div><strong>Multi-personality chat</strong><br>
+                        <span class="auth-feature-sub">Mentor, coder, coach & more</span></div>
+                    </div>
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">🌍</span>
+                        <div><strong>Public profiles</strong><br>
+                        <span class="auth-feature-sub">Share your best chats</span></div>
+                    </div>
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">🔔</span>
+                        <div><strong>Real-time alerts</strong><br>
+                        <span class="auth-feature-sub">In-app + email notifications</span></div>
+                    </div>
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">🔒</span>
+                        <div><strong>Secure by default</strong><br>
+                        <span class="auth-feature-sub">Hashed passwords + Google login</span></div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="auth-trust-row">'
+            f'<span>👥 <strong>{stats.get_total_registered_users():,}</strong> builders</span>'
+            f'<span>👀 <strong>{stats.get_total_visits():,}</strong> visits</span>'
+            f'<span>⚡ Free forever</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-    if st.session_state.auth_view == "login":
-        with st.container(border=True):
-            st.subheader("🔐 Welcome back")
-            with st.form("login_form"):
-                username = st.text_input("Username", value=st.session_state.prefill_username)
-                password = st.text_input("Password", type="password")
-                submitted = st.form_submit_button("Login →", use_container_width=True, type="primary")
+    with form_col:
+        toggle_col1, toggle_col2, _ = st.columns([1, 1, 2])
+        with toggle_col1:
+            if st.button("🔐 Login", use_container_width=True,
+                          type="primary" if st.session_state.auth_view == "login" else "secondary"):
+                st.session_state.auth_view = "login"
+                st.rerun()
+        with toggle_col2:
+            if st.button("📝 Register", use_container_width=True,
+                          type="primary" if st.session_state.auth_view == "register" else "secondary"):
+                st.session_state.auth_view = "register"
+                st.rerun()
 
-                if submitted:
-                    success, user_id = auth.login_user(username, password)
-                    if success:
-                        st.session_state.user_id = user_id
-                        st.session_state.username = username
-                        st.session_state.prefill_username = ""
-                        token = auth.create_session(user_id)
-                        st.query_params["token"] = token
-                        st.success("Login successful! Redirecting...")
-                        st.rerun()
-                    else:
-                        st.error("❌ Invalid username or password.")
+        st.write("")
 
-            st.caption("Don't have an account? Click **📝 Register** above.")
+        if st.session_state.auth_view == "login":
+            with st.container(border=True):
+                st.subheader("🔐 Welcome back")
+                with st.form("login_form"):
+                    username = st.text_input("Username", value=st.session_state.prefill_username)
+                    password = st.text_input("Password", type="password")
+                    submitted = st.form_submit_button("Login →", use_container_width=True, type="primary")
 
-            if hasattr(oauth, "is_google_oauth_configured") and oauth.is_google_oauth_configured():
-                st.write("")
-                st.caption("— or —")
-                redirect_uri = getattr(oauth, "get_configured_redirect_uri", lambda: "")()
-                if not redirect_uri and hasattr(st, "context"):
-                    redirect_uri = st.context.headers.get("Origin", "")
-                if redirect_uri:
-                    auth_url, state = oauth.build_google_auth_url(redirect_uri)
-                    st.session_state["_oauth_state"] = state
-                    st.session_state["_oauth_redirect_uri"] = redirect_uri
-                    st.link_button("🔵 Sign in with Google", auth_url, use_container_width=True)
-                else:
-                    st.caption("⚠️ Google sign-in needs GOOGLE_REDIRECT_URI configured.")
-
-    else:
-        with st.container(border=True):
-            st.subheader("📝 Create your account")
-            with st.form("register_form", clear_on_submit=True):
-                new_username = st.text_input("Choose username")
-                new_password = st.text_input("Choose password", type="password")
-                confirm_password = st.text_input("Confirm password", type="password")
-                submitted = st.form_submit_button("Create account →", use_container_width=True, type="primary")
-
-                if submitted:
-                    if not new_username.strip():
-                        st.error("Username cannot be empty!")
-                    elif new_password != confirm_password:
-                        st.error("❌ Passwords don't match!")
-                    elif len(new_password) < 6:
-                        st.error("❌ Password must be at least 6 characters!")
-                    else:
-                        success, message = auth.register_user(new_username, new_password)
+                    if submitted:
+                        success, user_id = auth.login_user(username, password)
                         if success:
-                            st.session_state["_reg_success"] = new_username
-                        elif message == "USERNAME_EXISTS":
-                            st.session_state["_reg_duplicate"] = new_username
+                            st.session_state.user_id = user_id
+                            st.session_state.username = username
+                            st.session_state.prefill_username = ""
+                            token = auth.create_session(user_id)
+                            st.query_params["token"] = token
+                            st.success("Login successful! Redirecting...")
+                            st.rerun()
                         else:
-                            st.error(f"❌ {message}")
+                            st.error("❌ Invalid username or password.")
 
-            if st.session_state.get("_reg_success"):
-                uname = st.session_state["_reg_success"]
-                st.success(f"🎉 Account created for **{uname}**! You're ready to log in.")
-                st.balloons()
-                if st.button("→ Continue to Login", use_container_width=True, key="goto_login_success"):
-                    st.session_state.prefill_username = uname
-                    st.session_state.auth_view = "login"
-                    del st.session_state["_reg_success"]
-                    st.rerun()
+                st.caption("Don't have an account? Click **📝 Register** above.")
 
-            if st.session_state.get("_reg_duplicate"):
-                uname = st.session_state["_reg_duplicate"]
-                st.warning(f"⚠️ You already have an account with username **{uname}**!")
-                if st.button("→ Go to Login instead", use_container_width=True, key="goto_login_duplicate"):
-                    st.session_state.prefill_username = uname
-                    st.session_state.auth_view = "login"
-                    del st.session_state["_reg_duplicate"]
-                    st.rerun()
+                if hasattr(oauth, "is_google_oauth_configured") and oauth.is_google_oauth_configured():
+                    st.write("")
+                    st.caption("— or —")
+                    redirect_uri = getattr(oauth, "get_configured_redirect_uri", lambda: "")()
+                    if not redirect_uri and hasattr(st, "context"):
+                        redirect_uri = st.context.headers.get("Origin", "")
+                    if redirect_uri:
+                        auth_url, state = oauth.build_google_auth_url(redirect_uri)
+                        st.session_state["_oauth_state"] = state
+                        st.session_state["_oauth_redirect_uri"] = redirect_uri
+                        st.link_button("🔵 Sign in with Google", auth_url, use_container_width=True)
+                    else:
+                        st.caption("⚠️ Google sign-in needs GOOGLE_REDIRECT_URI configured.")
+
+        else:
+            with st.container(border=True):
+                st.subheader("📝 Create your account")
+                with st.form("register_form", clear_on_submit=True):
+                    new_username = st.text_input("Choose username")
+                    new_password = st.text_input("Choose password", type="password")
+                    confirm_password = st.text_input("Confirm password", type="password")
+                    new_email = st.text_input(
+                        "Email (optional)",
+                        placeholder="you@example.com",
+                        help="Add this to get email alerts when someone likes or comments on your chats. "
+                             "You can also add or change it later from your Profile.",
+                    )
+                    submitted = st.form_submit_button("Create account →", use_container_width=True, type="primary")
+
+                    if submitted:
+                        if not new_username.strip():
+                            st.error("Username cannot be empty!")
+                        elif new_password != confirm_password:
+                            st.error("❌ Passwords don't match!")
+                        elif len(new_password) < 6:
+                            st.error("❌ Password must be at least 6 characters!")
+                        elif new_email.strip() and "@" not in new_email:
+                            st.error("❌ That email address doesn't look right.")
+                        else:
+                            clean_email = new_email.strip() or None
+                            success, message = auth.register_user(new_username, new_password, clean_email)
+                            if success:
+                                st.session_state["_reg_success"] = new_username
+                                if clean_email and email_service.is_configured():
+                                    email_service.send_welcome_email(clean_email, new_username)
+                            elif message == "USERNAME_EXISTS":
+                                st.session_state["_reg_duplicate"] = new_username
+                            else:
+                                st.error(f"❌ {message}")
+
+                if st.session_state.get("_reg_success"):
+                    uname = st.session_state["_reg_success"]
+                    st.success(f"🎉 Account created for **{uname}**! You're ready to log in.")
+                    st.balloons()
+                    if st.button("→ Continue to Login", use_container_width=True, key="goto_login_success"):
+                        st.session_state.prefill_username = uname
+                        st.session_state.auth_view = "login"
+                        del st.session_state["_reg_success"]
+                        st.rerun()
+
+                if st.session_state.get("_reg_duplicate"):
+                    uname = st.session_state["_reg_duplicate"]
+                    st.warning(f"⚠️ You already have an account with username **{uname}**!")
+                    if st.button("→ Go to Login instead", use_container_width=True, key="goto_login_duplicate"):
+                        st.session_state.prefill_username = uname
+                        st.session_state.auth_view = "login"
+                        del st.session_state["_reg_duplicate"]
+                        st.rerun()
 
 
 # ============================================
@@ -777,6 +834,38 @@ else:
                             st.markdown(f"- **{source}**: {count:,} click(s)")
                     else:
                         st.caption("No views yet — share your profile link above! 🚀")
+
+                # ---- Day 17: email notification preferences ----
+                with st.container(border=True):
+                    st.markdown("##### ✉️ Email Notifications")
+                    if not email_service.is_configured():
+                        st.caption(
+                            "⚠️ Email sending isn't set up on this deployment yet "
+                            "(SMTP_HOST/SMTP_USER/SMTP_PASSWORD missing from .env). "
+                            "In-app 🔔 alerts still work as normal."
+                        )
+                    else:
+                        current_email, current_enabled = auth.get_email_settings(st.session_state.user_id)
+                        with st.form("email_settings_form"):
+                            email_input = st.text_input(
+                                "Email address",
+                                value=current_email or "",
+                                placeholder="you@example.com",
+                            )
+                            enabled_input = st.toggle(
+                                "Email me when someone likes or comments on my chats",
+                                value=current_enabled,
+                            )
+                            saved = st.form_submit_button("Save", type="primary")
+                            if saved:
+                                if enabled_input and (not email_input.strip() or "@" not in email_input):
+                                    st.error("❌ Enter a valid email address to turn notifications on.")
+                                else:
+                                    auth.update_email_settings(
+                                        st.session_state.user_id, email_input.strip() or None, enabled_input
+                                    )
+                                    st.success("✅ Saved!")
+                                    st.rerun()
 
             st.markdown(
                 f'<div class="profile-header"><span class="profile-avatar">🧑‍💻</span>'
