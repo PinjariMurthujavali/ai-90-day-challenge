@@ -235,6 +235,11 @@ def init_database():
     _run("ALTER TABLE users ADD COLUMN oauth_id TEXT", ignore_errors=True)
     _run("ALTER TABLE users ADD COLUMN avatar_url TEXT", ignore_errors=True)
 
+    # ---- Day 17: email notifications — opt-in, off by default so nobody
+    # gets emailed without choosing to be. `email` column already exists
+    # (added above for OAuth), reused here for username/password users too.
+    _run("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 0", ignore_errors=True)
+
     # Older DBs were created before OAuth existed, with password_hash NOT
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
