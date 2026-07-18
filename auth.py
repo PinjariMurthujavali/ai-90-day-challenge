@@ -17,13 +17,13 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def register_user(username, password):
+def register_user(username, password, email=None):
     try:
         conn = get_connection()
         cursor = conn.cursor()
         password_hash = hash_password(password)
-        cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                       (username, password_hash))
+        cursor.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+                       (username, password_hash, email or None))
         conn.commit()
         conn.close()
         return True, "Registration successful!"
@@ -68,6 +68,31 @@ def get_avatar_url(user_id):
     row = cursor.fetchone()
     conn.close()
     return row[0] if row and row[0] else None
+
+
+# ---- Day 17: email notification preferences ----
+
+def get_email_settings(user_id):
+    """Returns (email, notifications_enabled: bool)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT email, email_notifications_enabled FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None, False
+    return row[0], bool(row[1])
+
+
+def update_email_settings(user_id, email, notifications_enabled):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'UPDATE users SET email = ?, email_notifications_enabled = ? WHERE id = ?',
+        (email or None, 1 if notifications_enabled else 0, user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_user_id_by_username(username):
