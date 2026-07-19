@@ -25,6 +25,7 @@ from config import PERSONALITIES, personality_info, personality_label
 import auth
 import oauth
 import email_service
+import admin_service
 import chat_service as chats
 import social_service as social
 import notification_service as notify
@@ -42,6 +43,7 @@ if not api_key:
 client = Groq(api_key=api_key)
 
 init_database()
+auth.ensure_admin_account()
 
 
 # ============================================
@@ -402,6 +404,22 @@ if not st.session_state.user_id:
                         del st.session_state["_reg_duplicate"]
                         st.rerun()
 
+                # Same Google OAuth flow as the Login tab — for a Google
+                # account that doesn't exist yet, it creates one on the
+                # spot (see oauth.login_or_create_oauth_user), so one
+                # button correctly serves as both "sign up" and "sign in".
+                if hasattr(oauth, "is_google_oauth_configured") and oauth.is_google_oauth_configured():
+                    st.write("")
+                    st.caption("— or —")
+                    redirect_uri = getattr(oauth, "get_configured_redirect_uri", lambda: "")()
+                    if not redirect_uri and hasattr(st, "context"):
+                        redirect_uri = st.context.headers.get("Origin", "")
+                    if redirect_uri:
+                        auth_url, state = oauth.build_google_auth_url(redirect_uri)
+                        st.session_state["_oauth_state"] = state
+                        st.session_state["_oauth_redirect_uri"] = redirect_uri
+                        st.link_button("🔵 Sign up with Google", auth_url, use_container_width=True)
+
 
 # ============================================
 # MAIN APP (LOGGED IN)
@@ -471,7 +489,10 @@ else:
 
     # ---- top nav: Chats / Explore / Analytics / Notifications / My Profile ----
     unread_count = notify.get_unread_count(st.session_state.user_id)
-    nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, _ = st.columns([1, 1, 1, 1, 1, 1])
+    is_admin_user = auth.is_admin(st.session_state.user_id)
+    nav_widths = [1, 1, 1, 1, 1, 1, 1] if is_admin_user else [1, 1, 1, 1, 1, 1]
+    nav_cols = st.columns(nav_widths)
+    nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = nav_cols[0], nav_cols[1], nav_cols[2], nav_cols[3], nav_cols[4]
     with nav_col1:
         if st.button("💬 Chats", use_container_width=True,
                       type="primary" if st.session_state.main_view == "chat" else "secondary"):
@@ -499,6 +520,12 @@ else:
             st.session_state.profile_username = st.session_state.username
             st.session_state.main_view = "profile"
             st.rerun()
+    if is_admin_user:
+        with nav_cols[5]:
+            if st.button("🛡️ Admin", use_container_width=True,
+                          type="primary" if st.session_state.main_view == "admin" else "secondary"):
+                st.session_state.main_view = "admin"
+                st.rerun()
 
     st.write("---")
 
@@ -901,6 +928,101 @@ else:
                             st.session_state.explore_view_chat_id = chat_id
                             st.session_state.main_view = "explore"
                             st.rerun()
+
+    # ============================================
+    # MAIN AREA — ADMIN PANEL (Day 18, admins only)
+    # ============================================
+    elif st.session_state.main_view == "admin" and is_admin_user:
+        st.markdown('<p class="section-heading">🛡️ Admin Dashboard</p>', unsafe_allow_html=True)
+
+        totals = admin_service.get_platform_totals()
+        t1, t2, t3, t4 = st.columns(4)
+        t1.metric("Total Users", f"{totals['total_users']:,}")
+        t2.metric("Total Chats", f"{totals['total_chats']:,}")
+        t3.metric("Total Messages", f"{totals['total_messages']:,}")
+        t4.metric("Pro/Enterprise", f"{totals['by_plan'].get('pro', 0) + totals['by_plan'].get('enterprise', 0):,}")
+
+        st.write("")
+        search_q = st.text_input("🔍 Search by username or email", key="admin_search")
+        st.write("")
+
+        rows = admin_service.list_users_with_stats()
+        columns = ["id", "username", "email", "plan", "is_admin", "oauth_provider",
+                   "created_at", "total_chats", "total_messages", "public_chats"]
+        df = pd.DataFrame(rows, columns=columns)
+
+        if search_q.strip():
+            q = search_q.strip().lower()
+            df = df[
+                df["username"].str.lower().str.contains(q, na=False)
+                | df["email"].fillna("").str.lower().str.contains(q, na=False)
+            ]
+
+        df["is_admin"] = df["is_admin"].astype(bool)
+        df_display = df.rename(columns={
+            "username": "Username", "email": "Email", "plan": "Plan",
+            "is_admin": "Admin", "oauth_provider": "Login via",
+            "created_at": "Joined", "total_chats": "Chats",
+            "total_messages": "Messages", "public_chats": "Public",
+        })
+
+        edited = st.data_editor(
+            df_display,
+            column_config={
+                "id": None,  # hide raw id column, still available in df
+                "Plan": st.column_config.SelectboxColumn(options=admin_service.PLAN_OPTIONS, required=True),
+                "Admin": st.column_config.CheckboxColumn(),
+                "Login via": st.column_config.TextColumn(disabled=True),
+                "Chats": st.column_config.NumberColumn(disabled=True),
+                "Messages": st.column_config.NumberColumn(disabled=True),
+                "Public": st.column_config.NumberColumn(disabled=True),
+                "Joined": st.column_config.TextColumn(disabled=True),
+                "Username": st.column_config.TextColumn(disabled=True),
+                "Email": st.column_config.TextColumn(disabled=True),
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="admin_user_editor",
+        )
+
+        if st.button("💾 Save changes", type="primary"):
+            changes = 0
+            errors = []
+            for i in range(len(df)):
+                user_id = int(df.iloc[i]["id"])
+                orig_plan = df.iloc[i]["plan"]
+                orig_admin = bool(df.iloc[i]["is_admin"])
+                new_plan = edited.iloc[i]["Plan"]
+                new_admin = bool(edited.iloc[i]["Admin"])
+
+                if new_plan != orig_plan:
+                    admin_service.set_user_plan(user_id, new_plan)
+                    changes += 1
+                if new_admin != orig_admin:
+                    ok, msg = admin_service.set_user_admin(user_id, new_admin, st.session_state.user_id)
+                    if not ok:
+                        errors.append(f"{df.iloc[i]['username']}: {msg}")
+                    else:
+                        changes += 1
+
+            if changes:
+                st.success(f"✅ Saved {changes} change(s).")
+            for e in errors:
+                st.warning(f"⚠️ {e}")
+            if changes or errors:
+                st.rerun()
+
+        st.write("---")
+        with st.expander("🔑 Reset a user's password"):
+            reset_username = st.selectbox("User", df["username"].tolist(), key="admin_reset_user")
+            new_pw = st.text_input("New password", type="password", key="admin_reset_pw")
+            if st.button("Reset password", key="admin_reset_btn"):
+                if len(new_pw) < 6:
+                    st.error("❌ Password must be at least 6 characters!")
+                else:
+                    target_id = int(df[df["username"] == reset_username].iloc[0]["id"])
+                    admin_service.reset_user_password(target_id, new_pw)
+                    st.success(f"✅ Password reset for {reset_username}.")
 
     # ============================================
     # MAIN AREA — CHAT VIEW
