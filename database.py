@@ -74,7 +74,18 @@ def _open_raw_connection():
 class _SharedCursor:
     """Wraps a real cursor. If the underlying execute() fails because the
     remote Turso stream went stale, transparently reconnects the shared
-    connection and retries the exact same statement once before giving up."""
+    connection and retries the exact same statement once before giving up.
+
+    BUG FIX: when the underlying libsql (Turso/Rust) connection goes stale,
+    it doesn't always raise a normal Python exception — it can raise
+    `pyo3_runtime.PanicException`, which pyo3 deliberately makes inherit
+    from BaseException (not Exception), the same way SystemExit/
+    KeyboardInterrupt do, specifically so a plain `except Exception:` does
+    NOT catch it. That meant this retry logic was silently skipped and the
+    panic killed the whole Streamlit script-runner thread (visible as a
+    connection error / blank Streamlit Cloud 404). Catching BaseException
+    here (while still letting a real Ctrl+C / SystemExit through) is what
+    actually reaches the reconnect-and-retry path in that case."""
 
     def __init__(self, parent):
         self._parent = parent
@@ -84,7 +95,9 @@ class _SharedCursor:
         try:
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:
             self._parent._reconnect()
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
@@ -124,7 +137,9 @@ class _SharedConnection:
     def commit(self):
         try:
             self._real.commit()
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:
             self._reconnect()
             self._real.commit()
 
@@ -171,7 +186,10 @@ except Exception:
 def _run(sql, params=None, ignore_errors=False, retries=3):
     """Run ONE write statement + commit using the shared connection.
     Retries a few times on transient network hiccups (self-healing
-    reconnect already happens inside _SharedConnection/_SharedCursor)."""
+    reconnect already happens inside _SharedConnection/_SharedCursor).
+    Catches BaseException (not just Exception) for the same reason as
+    _SharedCursor.execute() above — a second consecutive libsql panic
+    would otherwise skip straight past an `except Exception:` here too."""
     last_err = None
     for attempt in range(retries):
         try:
@@ -180,7 +198,9 @@ def _run(sql, params=None, ignore_errors=False, retries=3):
             cur.execute(sql, params or ())
             conn.commit()
             return
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:
             last_err = e
             continue
     if not ignore_errors:
@@ -197,7 +217,9 @@ def _query(sql, params=None, retries=3):
             cur.execute(sql, params or ())
             rows = cur.fetchall()
             return rows
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:
             last_err = e
             continue
     raise last_err
