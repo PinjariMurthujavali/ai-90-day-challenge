@@ -253,6 +253,19 @@ def init_database():
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
     # SQLite itself recommends: new table -> copy rows -> swap names).
+    #
+    # BUG FIX: this rebuild's CREATE TABLE was still the Day-14 column
+    # list. Every later ALTER TABLE ADD COLUMN above (email_notifications_
+    # enabled, is_admin, plan, plan_updated_at) WAS being applied to the
+    # old table successfully, but this block then ran right after, rebuilt
+    # `users` from a column list that didn't include them, and silently
+    # dropped them again — on every single boot, for any DB old enough to
+    # hit this path. That's what was crashing ensure_admin_account() with
+    # "no such column: is_admin" even though the ALTER TABLE above ran
+    # without error a few lines earlier.
+    # NOTE for future column additions: they must be added to BOTH the
+    # ALTER TABLE section above AND the two statements below, or the same
+    # class of bug reappears for any database still on the old schema.
     try:
         col_info = _query("PRAGMA table_info(users)")
         password_col = next((c for c in col_info if c[1] == "password_hash"), None)
@@ -266,12 +279,21 @@ def init_database():
                     email TEXT,
                     oauth_provider TEXT,
                     oauth_id TEXT,
-                    avatar_url TEXT
+                    avatar_url TEXT,
+                    email_notifications_enabled INTEGER DEFAULT 0,
+                    is_admin INTEGER DEFAULT 0,
+                    plan TEXT DEFAULT 'free',
+                    plan_updated_at TIMESTAMP
                 )
             ''')
             _run('''
-                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url)
-                SELECT id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url FROM users
+                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider,
+                                        oauth_id, avatar_url, email_notifications_enabled, is_admin,
+                                        plan, plan_updated_at)
+                SELECT id, username, password_hash, created_at, email, oauth_provider,
+                       oauth_id, avatar_url, email_notifications_enabled, is_admin,
+                       plan, plan_updated_at
+                FROM users
             ''')
             _run("DROP TABLE users")
             _run("ALTER TABLE users_new RENAME TO users")
