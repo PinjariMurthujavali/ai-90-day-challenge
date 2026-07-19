@@ -95,6 +95,48 @@ def update_email_settings(user_id, email, notifications_enabled):
     conn.close()
 
 
+# ---- Day 18: admin account + subscription plan ----
+
+ADMIN_USERNAME = "Murthu78618447"
+ADMIN_PASSWORD = "Murthu@44718786"
+
+
+def ensure_admin_account():
+    """Called once at app boot (after init_database). Creates the owner's
+    admin account if it doesn't exist yet; if it already exists (e.g. it
+    was somehow created as a normal user before this feature existed),
+    promotes it to admin instead of failing on the UNIQUE constraint."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, is_admin FROM users WHERE username = ?', (ADMIN_USERNAME,))
+    row = cursor.fetchone()
+
+    if row is None:
+        cursor.execute(
+            '''INSERT INTO users (username, password_hash, is_admin, plan)
+               VALUES (?, ?, 1, 'enterprise')''',
+            (ADMIN_USERNAME, hash_password(ADMIN_PASSWORD)),
+        )
+        conn.commit()
+    elif not row[1]:
+        cursor.execute('UPDATE users SET is_admin = 1, plan = ? WHERE id = ?',
+                       ('enterprise', row[0]))
+        conn.commit()
+
+    conn.close()
+
+
+def is_admin(user_id):
+    if not user_id:
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT is_admin FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
 def get_user_id_by_username(username):
     conn = get_connection()
     cursor = conn.cursor()
