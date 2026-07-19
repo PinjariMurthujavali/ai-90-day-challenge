@@ -240,6 +240,15 @@ def init_database():
     # (added above for OAuth), reused here for username/password users too.
     _run("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 0", ignore_errors=True)
 
+    # ---- Day 18: admin flag + subscription plan. Payments/Stripe come
+    # later on the roadmap — for now `plan` is a manually-assigned label
+    # (free / pro / enterprise) that only an admin account can change,
+    # from the new Admin panel, so the plan concept and the UI for it
+    # both exist ahead of real billing being wired in.
+    _run("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN plan_updated_at TIMESTAMP", ignore_errors=True)
+
     # Older DBs were created before OAuth existed, with password_hash NOT
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
