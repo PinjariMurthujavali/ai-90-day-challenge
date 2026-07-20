@@ -74,18 +74,7 @@ def _open_raw_connection():
 class _SharedCursor:
     """Wraps a real cursor. If the underlying execute() fails because the
     remote Turso stream went stale, transparently reconnects the shared
-    connection and retries the exact same statement once before giving up.
-
-    BUG FIX: when the underlying libsql (Turso/Rust) connection goes stale,
-    it doesn't always raise a normal Python exception — it can raise
-    `pyo3_runtime.PanicException`, which pyo3 deliberately makes inherit
-    from BaseException (not Exception), the same way SystemExit/
-    KeyboardInterrupt do, specifically so a plain `except Exception:` does
-    NOT catch it. That meant this retry logic was silently skipped and the
-    panic killed the whole Streamlit script-runner thread (visible as a
-    connection error / blank Streamlit Cloud 404). Catching BaseException
-    here (while still letting a real Ctrl+C / SystemExit through) is what
-    actually reaches the reconnect-and-retry path in that case."""
+    connection and retries the exact same statement once before giving up."""
 
     def __init__(self, parent):
         self._parent = parent
@@ -95,9 +84,7 @@ class _SharedCursor:
         try:
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except BaseException:
+        except Exception:
             self._parent._reconnect()
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
@@ -137,9 +124,7 @@ class _SharedConnection:
     def commit(self):
         try:
             self._real.commit()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except BaseException:
+        except Exception:
             self._reconnect()
             self._real.commit()
 
@@ -186,10 +171,7 @@ except Exception:
 def _run(sql, params=None, ignore_errors=False, retries=3):
     """Run ONE write statement + commit using the shared connection.
     Retries a few times on transient network hiccups (self-healing
-    reconnect already happens inside _SharedConnection/_SharedCursor).
-    Catches BaseException (not just Exception) for the same reason as
-    _SharedCursor.execute() above — a second consecutive libsql panic
-    would otherwise skip straight past an `except Exception:` here too."""
+    reconnect already happens inside _SharedConnection/_SharedCursor)."""
     last_err = None
     for attempt in range(retries):
         try:
@@ -198,9 +180,7 @@ def _run(sql, params=None, ignore_errors=False, retries=3):
             cur.execute(sql, params or ())
             conn.commit()
             return
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except BaseException as e:
+        except Exception as e:
             last_err = e
             continue
     if not ignore_errors:
@@ -217,9 +197,7 @@ def _query(sql, params=None, retries=3):
             cur.execute(sql, params or ())
             rows = cur.fetchall()
             return rows
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except BaseException as e:
+        except Exception as e:
             last_err = e
             continue
     raise last_err
@@ -275,19 +253,6 @@ def init_database():
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
     # SQLite itself recommends: new table -> copy rows -> swap names).
-    #
-    # BUG FIX: this rebuild's CREATE TABLE was still the Day-14 column
-    # list. Every later ALTER TABLE ADD COLUMN above (email_notifications_
-    # enabled, is_admin, plan, plan_updated_at) WAS being applied to the
-    # old table successfully, but this block then ran right after, rebuilt
-    # `users` from a column list that didn't include them, and silently
-    # dropped them again — on every single boot, for any DB old enough to
-    # hit this path. That's what was crashing ensure_admin_account() with
-    # "no such column: is_admin" even though the ALTER TABLE above ran
-    # without error a few lines earlier.
-    # NOTE for future column additions: they must be added to BOTH the
-    # ALTER TABLE section above AND the two statements below, or the same
-    # class of bug reappears for any database still on the old schema.
     try:
         col_info = _query("PRAGMA table_info(users)")
         password_col = next((c for c in col_info if c[1] == "password_hash"), None)
@@ -301,21 +266,12 @@ def init_database():
                     email TEXT,
                     oauth_provider TEXT,
                     oauth_id TEXT,
-                    avatar_url TEXT,
-                    email_notifications_enabled INTEGER DEFAULT 0,
-                    is_admin INTEGER DEFAULT 0,
-                    plan TEXT DEFAULT 'free',
-                    plan_updated_at TIMESTAMP
+                    avatar_url TEXT
                 )
             ''')
             _run('''
-                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider,
-                                        oauth_id, avatar_url, email_notifications_enabled, is_admin,
-                                        plan, plan_updated_at)
-                SELECT id, username, password_hash, created_at, email, oauth_provider,
-                       oauth_id, avatar_url, email_notifications_enabled, is_admin,
-                       plan, plan_updated_at
-                FROM users
+                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url)
+                SELECT id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url FROM users
             ''')
             _run("DROP TABLE users")
             _run("ALTER TABLE users_new RENAME TO users")
@@ -343,6 +299,28 @@ def init_database():
             content TEXT NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (chat_id) REFERENCES chats (id)
+        )
+    ''')
+
+    # ---- Day 19: file uploads. Small files only (base64 stored straight in
+    # the DB row) — no external object storage is configured for this
+    # project, and Streamlit Cloud's filesystem is ephemeral (wiped on
+    # every redeploy), so a plain local-disk save would silently lose
+    # every uploaded file the next time the app restarts. Storing the
+    # bytes in the same database that already survives restarts (Turso)
+    # is the option that's actually durable without adding new infra.
+    _run('''
+        CREATE TABLE IF NOT EXISTS attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            data_b64 TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (chat_id) REFERENCES chats (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
 
