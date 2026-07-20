@@ -26,6 +26,7 @@ import auth
 import oauth
 import email_service
 import admin_service
+import upload_service
 import chat_service as chats
 import social_service as social
 import notification_service as notify
@@ -1097,6 +1098,48 @@ else:
                     render_like_and_share(chat_id, share_token, key_prefix="own")
                     st.write("")
                     render_comments(chat_id, key_prefix="own")
+
+            # ---- Day 19: file uploads attached to this chat ----
+            attachments = upload_service.get_attachments_for_chat(chat_id)
+            with st.expander(f"📎 Attachments ({len(attachments)})", expanded=False):
+                new_file = st.file_uploader(
+                    "Attach a file",
+                    type=upload_service.ALLOWED_EXTENSIONS,
+                    key=f"uploader_{chat_id}",
+                    help=f"Max {upload_service.human_size(upload_service.MAX_FILE_SIZE_BYTES)} per file. "
+                         f"Images, PDFs, and text files.",
+                )
+                if new_file is not None:
+                    file_bytes = new_file.getvalue()
+                    ok, msg = upload_service.save_attachment(
+                        chat_id, st.session_state.user_id, new_file.name, new_file.type or "application/octet-stream", file_bytes
+                    )
+                    if ok:
+                        st.success(f"✅ {new_file.name} uploaded!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {msg}")
+
+                if attachments:
+                    st.write("")
+                    for att_id, filename, mime_type, size_bytes, created_at in attachments:
+                        a_col1, a_col2, a_col3 = st.columns([3, 1, 1])
+                        with a_col1:
+                            icon = "🖼️" if upload_service.is_image(filename) else "📄"
+                            st.markdown(f"{icon} **{filename}** · {upload_service.human_size(size_bytes)}")
+                        with a_col2:
+                            file_data, f_mime, f_name = upload_service.get_attachment_data(att_id)
+                            st.download_button("⬇️", data=file_data, file_name=f_name, mime=f_mime,
+                                                key=f"dl_{att_id}", use_container_width=True)
+                        with a_col3:
+                            if st.button("🗑️", key=f"del_att_{att_id}", use_container_width=True):
+                                upload_service.delete_attachment(att_id, st.session_state.user_id)
+                                st.rerun()
+                        if upload_service.is_image(filename):
+                            img_data, _, _ = upload_service.get_attachment_data(att_id)
+                            st.image(img_data, width=220)
+                else:
+                    st.caption("No files attached yet.")
 
             st.write("---")
 
