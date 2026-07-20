@@ -249,6 +249,147 @@ APP_CSS = """
     }
 
     /* ---------- NEW for Day 16: nav buttons feel snappier ---------- */
+    /* ---------- NEW for Day 16: nav buttons feel snappier ---------- */
     .stButton > button:active { transform: translateY(0px) scale(0.98); }
+
+    /* ---------- NEW for Day 17: professional split-screen auth theme ---------- */
+    /* ---------- Day 18 update: orange-forward gradient + floating "robotics" particles ---------- */
+    .auth-hero {
+        position: relative;
+        padding: 2.2rem 2rem;
+        border-radius: 20px;
+        background:
+            radial-gradient(circle at 15% 15%, rgba(255,138,50,0.22), transparent 55%),
+            radial-gradient(circle at 85% 20%, rgba(255,184,77,0.20), transparent 50%),
+            radial-gradient(circle at 60% 90%, rgba(255,90,95,0.14), transparent 55%),
+            linear-gradient(160deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
+        border: 1px solid rgba(255,159,67,0.18);
+        overflow: hidden;
+    }
+    .auth-floaters {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .auth-floaters .floater {
+        position: absolute;
+        font-size: 1.6rem;
+        opacity: 0.28;
+        filter: drop-shadow(0 0 10px rgba(255,159,67,0.55));
+        animation: floaty 7s ease-in-out infinite;
+    }
+    .floater.f1 { top: 8%;  left: 6%;  font-size: 2.1rem; animation-delay: 0s;    }
+    .floater.f2 { top: 65%; left: 10%; font-size: 1.3rem; animation-delay: 1.1s; }
+    .floater.f3 { top: 20%; left: 88%; font-size: 1.7rem; animation-delay: 2.3s; }
+    .floater.f4 { top: 78%; left: 82%; font-size: 2.4rem; animation-delay: 0.6s; }
+    .floater.f5 { top: 45%; left: 50%; font-size: 1.1rem; animation-delay: 1.8s; }
+    .floater.f6 { top: 5%;  left: 45%; font-size: 1.2rem; animation-delay: 3s;   }
+    @keyframes floaty {
+        0%   { transform: translateY(0px) rotate(0deg); }
+        50%  { transform: translateY(-16px) rotate(8deg); }
+        100% { transform: translateY(0px) rotate(0deg); }
+    }
+    .auth-hero-badge, .auth-hero-title, .auth-hero-sub, .auth-feature-row {
+        position: relative;
+        z-index: 1;
+    }
+    .auth-hero-badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: #FFB84D;
+        background: rgba(255,184,77,0.12);
+        border: 1px solid rgba(255,184,77,0.3);
+        padding: 4px 12px;
+        border-radius: 999px;
+        margin-bottom: 1rem;
+    }
+    .auth-hero-title {
+        font-size: 1.9rem;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 0 0 0.7rem 0;
+        letter-spacing: -0.5px;
+    }
+    .auth-hero-sub {
+        color: #9CA3AF;
+        font-size: 1rem;
+        line-height: 1.55;
+        margin-bottom: 1.6rem;
+    }
+    .auth-feature-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.9rem;
+    }
+    .auth-feature {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        font-size: 0.88rem;
+        padding: 0.7rem;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.05);
+    }
+    .auth-feature-icon { font-size: 1.3rem; line-height: 1; }
+    .auth-feature-sub { color: #9CA3AF; font-size: 0.78rem; }
+    .auth-trust-row {
+        display: flex;
+        gap: 1.4rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+        padding: 0.9rem 0.2rem 0.2rem 0.2rem;
+        font-size: 0.85rem;
+        color: #D1D5DB;
+    }
+
+    /* Login/Register card itself — give the bordered container real presence */
+    div[data-testid="stForm"] {
+        border-radius: 16px !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        background: rgba(255,255,255,0.02);
+        padding-top: 0.4rem;
+    }
+    div[data-testid="stTextInput"] input {
+        border-radius: 10px !important;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        box-shadow: 0 0 0 2px rgba(255,90,95,0.4) !important;
+        border-color: #FF5A5F !important;
+    }
+
+    @media (max-width: 900px) {
+        .auth-feature-row { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- NEW for Day 18: premium depth + admin panel polish ---------- */
+    .stButton > button {
+        box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .stButton > button:hover {
+        box-shadow: 0 4px 14px rgba(255,90,95,0.22);
+        transform: translateY(-1px);
+    }
+    div[data-testid="stMetric"] {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 14px;
+        padding: 0.9rem 1rem;
+    }
+    div[data-testid="stMetricValue"] {
+        font-weight: 800;
+        background: linear-gradient(90deg, #FF5A5F, #FFB84D);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08);
+    }
 </style>
 """
