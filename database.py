@@ -74,7 +74,18 @@ def _open_raw_connection():
 class _SharedCursor:
     """Wraps a real cursor. If the underlying execute() fails because the
     remote Turso stream went stale, transparently reconnects the shared
-    connection and retries the exact same statement once before giving up."""
+    connection and retries the exact same statement once before giving up.
+
+    BUG FIX: when the underlying libsql (Turso/Rust) connection goes stale,
+    it doesn't always raise a normal Python exception — it can raise
+    `pyo3_runtime.PanicException`, which pyo3 deliberately makes inherit
+    from BaseException (not Exception), the same way SystemExit/
+    KeyboardInterrupt do, specifically so a plain `except Exception:` does
+    NOT catch it. That meant this retry logic was silently skipped and the
+    panic killed the whole Streamlit script-runner thread (visible as a
+    connection error / blank Streamlit Cloud 404). Catching BaseException
+    here (while still letting a real Ctrl+C / SystemExit through) is what
+    actually reaches the reconnect-and-retry path in that case."""
 
     def __init__(self, parent):
         self._parent = parent
@@ -84,7 +95,9 @@ class _SharedCursor:
         try:
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:
             self._parent._reconnect()
             self._cur = self._parent._real.cursor()
             self._cur.execute(sql, params or ())
@@ -124,7 +137,9 @@ class _SharedConnection:
     def commit(self):
         try:
             self._real.commit()
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:
             self._reconnect()
             self._real.commit()
 
@@ -171,7 +186,10 @@ except Exception:
 def _run(sql, params=None, ignore_errors=False, retries=3):
     """Run ONE write statement + commit using the shared connection.
     Retries a few times on transient network hiccups (self-healing
-    reconnect already happens inside _SharedConnection/_SharedCursor)."""
+    reconnect already happens inside _SharedConnection/_SharedCursor).
+    Catches BaseException (not just Exception) for the same reason as
+    _SharedCursor.execute() above — a second consecutive libsql panic
+    would otherwise skip straight past an `except Exception:` here too."""
     last_err = None
     for attempt in range(retries):
         try:
@@ -180,7 +198,9 @@ def _run(sql, params=None, ignore_errors=False, retries=3):
             cur.execute(sql, params or ())
             conn.commit()
             return
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:
             last_err = e
             continue
     if not ignore_errors:
@@ -197,7 +217,9 @@ def _query(sql, params=None, retries=3):
             cur.execute(sql, params or ())
             rows = cur.fetchall()
             return rows
-        except Exception as e:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:
             last_err = e
             continue
     raise last_err
@@ -253,6 +275,19 @@ def init_database():
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
     # SQLite itself recommends: new table -> copy rows -> swap names).
+    #
+    # BUG FIX: this rebuild's CREATE TABLE was still the Day-14 column
+    # list. Every later ALTER TABLE ADD COLUMN above (email_notifications_
+    # enabled, is_admin, plan, plan_updated_at) WAS being applied to the
+    # old table successfully, but this block then ran right after, rebuilt
+    # `users` from a column list that didn't include them, and silently
+    # dropped them again — on every single boot, for any DB old enough to
+    # hit this path. That's what was crashing ensure_admin_account() with
+    # "no such column: is_admin" even though the ALTER TABLE above ran
+    # without error a few lines earlier.
+    # NOTE for future column additions: they must be added to BOTH the
+    # ALTER TABLE section above AND the two statements below, or the same
+    # class of bug reappears for any database still on the old schema.
     try:
         col_info = _query("PRAGMA table_info(users)")
         password_col = next((c for c in col_info if c[1] == "password_hash"), None)
@@ -266,12 +301,21 @@ def init_database():
                     email TEXT,
                     oauth_provider TEXT,
                     oauth_id TEXT,
-                    avatar_url TEXT
+                    avatar_url TEXT,
+                    email_notifications_enabled INTEGER DEFAULT 0,
+                    is_admin INTEGER DEFAULT 0,
+                    plan TEXT DEFAULT 'free',
+                    plan_updated_at TIMESTAMP
                 )
             ''')
             _run('''
-                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url)
-                SELECT id, username, password_hash, created_at, email, oauth_provider, oauth_id, avatar_url FROM users
+                INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider,
+                                        oauth_id, avatar_url, email_notifications_enabled, is_admin,
+                                        plan, plan_updated_at)
+                SELECT id, username, password_hash, created_at, email, oauth_provider,
+                       oauth_id, avatar_url, email_notifications_enabled, is_admin,
+                       plan, plan_updated_at
+                FROM users
             ''')
             _run("DROP TABLE users")
             _run("ALTER TABLE users_new RENAME TO users")
@@ -320,6 +364,26 @@ def init_database():
             data_b64 TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (chat_id) REFERENCES chats (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
+    # ---- Day 20: Payments/Plans. No Stripe keys configured yet, so this
+    # is deliberately NOT a fake "charge succeeded" flow — that would be
+    # dishonest and would need to be unwound later. Instead this is a real
+    # upgrade-request queue: a user asks for a plan change, an admin
+    # approves it from the Admin panel (which sets users.plan, already
+    # built on Day 18). Swapping in real Stripe checkout later only means
+    # replacing how a request gets created/approved — this table and the
+    # approval flow stay the same.
+    _run('''
+        CREATE TABLE IF NOT EXISTS upgrade_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            requested_plan TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
