@@ -391,5 +391,54 @@ APP_CSS = """
         overflow: hidden;
         border: 1px solid rgba(255,255,255,0.08);
     }
+
+    /* ---------- NEW for Day 20: theme refresh -- pricing cards + milestone banner ---------- */
+
+    /* Bordered st.container()s (used for the 3 plan cards) get a lift +
+       glow on hover, matching the metric-card treatment elsewhere. */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 18px !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+        border-color: rgba(255,90,95,0.35) !important;
+    }
+
+    /* Plan-tier badges on the pricing page */
+    .plan-badge {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: white;
+    }
+    .plan-badge-free       { background: linear-gradient(90deg, #6B7280, #9CA3AF); }
+    .plan-badge-pro        { background: linear-gradient(90deg, #FF5A5F, #FFB84D); }
+    .plan-badge-enterprise { background: linear-gradient(90deg, #7C3AED, #A855F7); }
+
+    /* Milestone banner (Day 20: payment system live) */
+    .milestone-banner {
+        background: linear-gradient(120deg, rgba(255,90,95,0.16), rgba(168,85,247,0.10));
+        border: 1px solid rgba(255,90,95,0.3);
+        border-radius: 16px;
+        padding: 0.9rem 1.3rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+    }
+    .milestone-banner .milestone-tag {
+        display: inline-block;
+        background: linear-gradient(90deg, #FF5A5F, #FFB84D);
+        color: white;
+        border-radius: 999px;
+        padding: 2px 12px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        margin-right: 0.6rem;
+    }
 </style>
 """
