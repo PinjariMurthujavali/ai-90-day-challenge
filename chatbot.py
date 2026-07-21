@@ -960,8 +960,29 @@ else:
     elif st.session_state.main_view == "pricing":
         st.markdown('<p class="section-heading">💎 Plans & Pricing</p>', unsafe_allow_html=True)
 
+        # ---- Day 20 theme refresh: milestone banner for reaching Day 20 ----
+        st.markdown(
+            '<div class="milestone-banner">'
+            '<span class="milestone-tag">DAY 20 MILESTONE</span>'
+            'Payment system is live — plan requests now flow to an admin for approval.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
         current_plan = auth.get_user_plan(st.session_state.user_id)
         pending_plan = pricing.get_user_pending_request(st.session_state.user_id)
+
+        plan_badge_class = {
+            "free": "plan-badge-free",
+            "pro": "plan-badge-pro",
+            "enterprise": "plan-badge-enterprise",
+        }
+        st.markdown(
+            f'You are currently on '
+            f'<span class="plan-badge {plan_badge_class.get(current_plan, "plan-badge-free")}">'
+            f'{pricing.PLANS.get(current_plan, pricing.PLANS["free"])["label"]}</span>',
+            unsafe_allow_html=True,
+        )
 
         if pending_plan:
             st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
@@ -978,7 +999,12 @@ else:
             with col:
                 is_current = plan_key == current_plan
                 with st.container(border=True):
-                    st.markdown(f"#### {plan['label']}")
+                    st.markdown(
+                        f"#### {plan['label']} "
+                        f'<span class="plan-badge {plan_badge_class.get(plan_key, "plan-badge-free")}">'
+                        f'{plan_key.upper()}</span>',
+                        unsafe_allow_html=True,
+                    )
                     st.markdown(f"### {plan['price']}")
                     st.caption(plan['tagline'])
                     st.write("")
