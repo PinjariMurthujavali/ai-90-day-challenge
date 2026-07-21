@@ -137,6 +137,15 @@ def is_admin(user_id):
     return bool(row and row[0])
 
 
+def get_user_plan(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT plan FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] else "free"
+
+
 def get_user_id_by_username(username):
     conn = get_connection()
     cursor = conn.cursor()
