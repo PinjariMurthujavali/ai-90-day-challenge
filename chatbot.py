@@ -27,6 +27,7 @@ import oauth
 import email_service
 import admin_service
 import upload_service
+import pricing
 import chat_service as chats
 import social_service as social
 import notification_service as notify
@@ -259,7 +260,7 @@ if not st.session_state.user_id:
     with hero_col:
         st.markdown("""
             <div class="auth-hero">
-                <span class="auth-hero-badge">🚀 90-Day Build Challenge · Day 18</span>
+                <span class="auth-hero-badge">🚀 90-Day Build Challenge · Day 20</span>
                 <div class="auth-floaters" aria-hidden="true">
                     <span class="floater f1">🤖</span>
                     <span class="floater f2">⚡</span>
@@ -268,16 +269,21 @@ if not st.session_state.user_id:
                     <span class="floater f5">🔶</span>
                     <span class="floater f6">✨</span>
                 </div>
-                <h2 class="auth-hero-title">Your AI conversations,<br>built to be shared.</h2>
+                <h2 class="auth-hero-title">One platform for every<br>AI conversation you have.</h2>
                 <p class="auth-hero-sub">
-                    Chat with focused AI personalities, publish your best threads to the
-                    community, and track every like, comment and view — all in one place.
+                    Chat with focused AI personalities, attach files, publish your best threads
+                    to the community, and manage it all from one clean dashboard.
                 </p>
                 <div class="auth-feature-row">
                     <div class="auth-feature">
                         <span class="auth-feature-icon">💬</span>
                         <div><strong>Multi-personality chat</strong><br>
                         <span class="auth-feature-sub">Mentor, coder, coach & more</span></div>
+                    </div>
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">📎</span>
+                        <div><strong>File attachments</strong><br>
+                        <span class="auth-feature-sub">Images, PDFs, docs — right in chat</span></div>
                     </div>
                     <div class="auth-feature">
                         <span class="auth-feature-icon">🌍</span>
@@ -288,6 +294,11 @@ if not st.session_state.user_id:
                         <span class="auth-feature-icon">🔔</span>
                         <div><strong>Real-time alerts</strong><br>
                         <span class="auth-feature-sub">In-app + email notifications</span></div>
+                    </div>
+                    <div class="auth-feature">
+                        <span class="auth-feature-icon">💎</span>
+                        <div><strong>Flexible plans</strong><br>
+                        <span class="auth-feature-sub">Free, Pro & Enterprise tiers</span></div>
                     </div>
                     <div class="auth-feature">
                         <span class="auth-feature-icon">🔒</span>
@@ -496,12 +507,12 @@ else:
             st.session_state.current_chat_id = None
             st.rerun()
 
-    # ---- top nav: Chats / Explore / Analytics / Notifications / My Profile ----
+    # ---- top nav: Chats / Explore / Analytics / Notifications / My Profile / Pricing ----
     unread_count = notify.get_unread_count(st.session_state.user_id)
     is_admin_user = auth.is_admin(st.session_state.user_id)
     nav_widths = [1, 1, 1, 1, 1, 1, 1] if is_admin_user else [1, 1, 1, 1, 1, 1]
     nav_cols = st.columns(nav_widths)
-    nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = nav_cols[0], nav_cols[1], nav_cols[2], nav_cols[3], nav_cols[4]
+    nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = nav_cols[0], nav_cols[1], nav_cols[2], nav_cols[3], nav_cols[4], nav_cols[5]
     with nav_col1:
         if st.button("💬 Chats", use_container_width=True,
                       type="primary" if st.session_state.main_view == "chat" else "secondary"):
@@ -529,8 +540,13 @@ else:
             st.session_state.profile_username = st.session_state.username
             st.session_state.main_view = "profile"
             st.rerun()
+    with nav_col6:
+        if st.button("💎 Pricing", use_container_width=True,
+                      type="primary" if st.session_state.main_view == "pricing" else "secondary"):
+            st.session_state.main_view = "pricing"
+            st.rerun()
     if is_admin_user:
-        with nav_cols[5]:
+        with nav_cols[6]:
             if st.button("🛡️ Admin", use_container_width=True,
                           type="primary" if st.session_state.main_view == "admin" else "secondary"):
                 st.session_state.main_view = "admin"
@@ -702,7 +718,7 @@ else:
                 df["Personality"] = df["Personality"].str.replace("_", " ").str.title()
                 most_used = df.loc[df["Chats"].idxmax(), "Personality"]
                 df = df.set_index("Personality")
-                st.bar_chart(df, color="#FF5A5F")
+                st.bar_chart(df, color="#6C63FF")
                 st.success(f"🏆 Most used personality: **{most_used}**")
             else:
                 st.markdown('<div class="analytics-empty">No data yet — start chatting! 🎭</div>', unsafe_allow_html=True)
@@ -712,7 +728,7 @@ else:
             if data["daily_counts"]:
                 df2 = pd.DataFrame(data["daily_counts"], columns=["Date", "Messages"])
                 df2 = df2.set_index("Date")
-                st.line_chart(df2, color="#FFB84D")
+                st.line_chart(df2, color="#00E0FF")
             else:
                 st.markdown('<div class="analytics-empty">No activity yet. 📈</div>', unsafe_allow_html=True)
 
@@ -939,6 +955,50 @@ else:
                             st.rerun()
 
     # ============================================
+    # MAIN AREA — PRICING (Day 20)
+    # ============================================
+    elif st.session_state.main_view == "pricing":
+        st.markdown('<p class="section-heading">💎 Plans & Pricing</p>', unsafe_allow_html=True)
+
+        current_plan = auth.get_user_plan(st.session_state.user_id)
+        pending_plan = pricing.get_user_pending_request(st.session_state.user_id)
+
+        if pending_plan:
+            st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
+
+        st.caption(
+            "No live payment gateway is connected yet — requesting a plan below sends it to an "
+            "admin for approval instead of charging a card. Real checkout can be wired in later "
+            "without changing this page."
+        )
+        st.write("")
+
+        plan_cols = st.columns(3)
+        for col, (plan_key, plan) in zip(plan_cols, pricing.PLANS.items()):
+            with col:
+                is_current = plan_key == current_plan
+                with st.container(border=True):
+                    st.markdown(f"#### {plan['label']}")
+                    st.markdown(f"### {plan['price']}")
+                    st.caption(plan['tagline'])
+                    st.write("")
+                    for feat in plan['features']:
+                        st.markdown(f"✅ {feat}")
+                    st.write("")
+                    if is_current:
+                        st.success("✓ Current plan")
+                    elif pending_plan == plan_key:
+                        st.warning("⏳ Requested — awaiting approval")
+                    else:
+                        if st.button(f"Request {plan['label']}", key=f"req_{plan_key}", use_container_width=True):
+                            ok, msg = pricing.create_upgrade_request(st.session_state.user_id, plan_key)
+                            if ok:
+                                st.success(f"✅ {msg}")
+                            else:
+                                st.warning(f"⚠️ {msg}")
+                            st.rerun()
+
+    # ============================================
     # MAIN AREA — ADMIN PANEL (Day 18, admins only)
     # ============================================
     elif st.session_state.main_view == "admin" and is_admin_user:
@@ -1032,6 +1092,28 @@ else:
                     target_id = int(df[df["username"] == reset_username].iloc[0]["id"])
                     admin_service.reset_user_password(target_id, new_pw)
                     st.success(f"✅ Password reset for {reset_username}.")
+
+        # ---- Day 20: pending plan-upgrade requests ----
+        pending_requests = pricing.get_pending_requests()
+        st.write("---")
+        st.markdown(f"##### 💎 Pending Upgrade Requests ({len(pending_requests)})")
+        if not pending_requests:
+            st.caption("No pending requests.")
+        else:
+            for req_id, username, requested_plan, created_at, target_user_id in pending_requests:
+                r_col1, r_col2, r_col3 = st.columns([3, 1, 1])
+                with r_col1:
+                    st.markdown(f"**{username}** → {pricing.PLANS[requested_plan]['label']} · {created_at}")
+                with r_col2:
+                    if st.button("✅ Approve", key=f"approve_{req_id}", use_container_width=True):
+                        admin_service.set_user_plan(target_user_id, requested_plan)
+                        pricing.resolve_request(req_id, approve=True)
+                        st.success(f"✅ {username} upgraded to {requested_plan}.")
+                        st.rerun()
+                with r_col3:
+                    if st.button("❌ Reject", key=f"reject_{req_id}", use_container_width=True):
+                        pricing.resolve_request(req_id, approve=False)
+                        st.rerun()
 
     # ============================================
     # MAIN AREA — CHAT VIEW
