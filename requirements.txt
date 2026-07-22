@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 fpdf2==2.7.9
 requests==2.32.3
 libsql==0.1.11
+stripe==10.12.0
