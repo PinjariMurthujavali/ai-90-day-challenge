@@ -34,6 +34,7 @@ import notification_service as notify
 import stats_service as stats
 import profile_stats
 from export_utils import export_chat_json, export_chat_pdf
+import stripe_service
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
@@ -987,12 +988,25 @@ else:
         if pending_plan:
             st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
 
-        st.caption(
-            "No live payment gateway is connected yet — requesting a plan below sends it to an "
-            "admin for approval instead of charging a card. Real checkout can be wired in later "
-            "without changing this page."
-        )
+        stripe_live = stripe_service.is_configured()
+        if stripe_live:
+            st.caption(
+                "💳 Real payments are live for the Pro plan via Stripe Checkout. Free and "
+                "Enterprise still use the admin-approval flow below."
+            )
+        else:
+            st.caption(
+                "No live payment gateway is connected yet — requesting a plan below sends it to an "
+                "admin for approval instead of charging a card. Real checkout can be wired in later "
+                "without changing this page."
+            )
         st.write("")
+
+        checkout_status = st.query_params.get("checkout")
+        if checkout_status == "success":
+            st.success("✅ Payment received! Your plan will reflect Pro within a few seconds.")
+        elif checkout_status == "cancelled":
+            st.info("Checkout cancelled — no charge was made.")
 
         plan_cols = st.columns(3)
         for col, (plan_key, plan) in zip(plan_cols, pricing.PLANS.items()):
@@ -1013,6 +1027,15 @@ else:
                     st.write("")
                     if is_current:
                         st.success("✓ Current plan")
+                    elif stripe_live and plan_key == "pro":
+                        # Day 21: real Stripe Checkout — no admin approval needed,
+                        # the webhook receiver upgrades the plan the moment payment succeeds.
+                        if st.button("💳 Pay with Stripe", key=f"pay_{plan_key}", use_container_width=True, type="primary"):
+                            checkout_url = stripe_service.create_checkout_session(st.session_state.user_id, plan_key)
+                            if checkout_url:
+                                st.link_button("➡️ Continue to Stripe Checkout", checkout_url, use_container_width=True)
+                            else:
+                                st.error("Couldn't start checkout — Stripe isn't fully configured yet.")
                     elif pending_plan == plan_key:
                         st.warning("⏳ Requested — awaiting approval")
                     else:
