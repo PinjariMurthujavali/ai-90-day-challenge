@@ -1,0 +1,7 @@
+# Day 21: dependencies for stripe_webhook.py ONLY.
+# Deploy this file's contents to the SEPARATE Render/Railway service that
+# hosts the webhook receiver — not to Streamlit Community Cloud.
+flask==3.0.3
+gunicorn==22.0.0
+stripe==10.12.0
+libsql==0.1.11
