@@ -35,6 +35,8 @@ import stats_service as stats
 import profile_stats
 from export_utils import export_chat_json, export_chat_pdf
 import stripe_service
+import razorpay_service
+import invoice_service
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
@@ -970,6 +972,25 @@ else:
             unsafe_allow_html=True,
         )
 
+        # ---- Day 22: Razorpay checkout.js redirects back here with
+        # ?razorpay=success&payment_id=...&order_id=...&signature=... —
+        # catch that BEFORE rendering the plan cards below, verify the
+        # signature server-side, and only then upgrade the plan. Never
+        # trust the redirect params on their own.
+        rzp_status = st.query_params.get("razorpay")
+        if rzp_status == "success":
+            rzp_payment_id = st.query_params.get("payment_id")
+            rzp_order_id = st.query_params.get("order_id")
+            rzp_signature = st.query_params.get("signature")
+            ok, msg, _ = razorpay_service.verify_and_finalize(
+                st.session_state.user_id, "pro", rzp_order_id, rzp_payment_id, rzp_signature
+            )
+            st.query_params.clear()
+            if ok:
+                st.success(f"✅ {msg}")
+            else:
+                st.error(f"⚠️ {msg}")
+
         current_plan = auth.get_user_plan(st.session_state.user_id)
         pending_plan = pricing.get_user_pending_request(st.session_state.user_id)
 
@@ -989,9 +1010,13 @@ else:
             st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
 
         stripe_live = stripe_service.is_configured()
-        if stripe_live:
+        razorpay_live = razorpay_service.is_configured()
+        if stripe_live or razorpay_live:
+            gateways = " / ".join(
+                filter(None, ["Stripe" if stripe_live else None, "Razorpay" if razorpay_live else None])
+            )
             st.caption(
-                "💳 Real payments are live for the Pro plan via Stripe Checkout. Free and "
+                f"💳 Real payments are live for the Pro plan via {gateways} Checkout. Free and "
                 "Enterprise still use the admin-approval flow below."
             )
         else:
@@ -1027,15 +1052,55 @@ else:
                     st.write("")
                     if is_current:
                         st.success("✓ Current plan")
-                    elif stripe_live and plan_key == "pro":
+                    elif (stripe_live or razorpay_live) and plan_key == "pro":
                         # Day 21: real Stripe Checkout — no admin approval needed,
                         # the webhook receiver upgrades the plan the moment payment succeeds.
-                        if st.button("💳 Pay with Stripe", key=f"pay_{plan_key}", use_container_width=True, type="primary"):
-                            checkout_url = stripe_service.create_checkout_session(st.session_state.user_id, plan_key)
-                            if checkout_url:
-                                st.link_button("➡️ Continue to Stripe Checkout", checkout_url, use_container_width=True)
-                            else:
-                                st.error("Couldn't start checkout — Stripe isn't fully configured yet.")
+                        if stripe_live:
+                            if st.button("💳 Pay with Stripe", key=f"pay_{plan_key}", use_container_width=True, type="primary"):
+                                checkout_url = stripe_service.create_checkout_session(st.session_state.user_id, plan_key)
+                                if checkout_url:
+                                    st.link_button("➡️ Continue to Stripe Checkout", checkout_url, use_container_width=True)
+                                else:
+                                    st.error("Couldn't start checkout — Stripe isn't fully configured yet.")
+                        # Day 22: Razorpay Checkout — the INR-native alternative, no
+                        # separate webhook service needed. checkout.js opens in-page and
+                        # redirects back here on success; the signature gets verified
+                        # server-side above, before we trust it (razorpay=success handler).
+                        if razorpay_live:
+                            if st.button("🇮🇳 Pay with Razorpay", key=f"rzp_{plan_key}", use_container_width=True):
+                                order = razorpay_service.create_order(st.session_state.user_id, plan_key)
+                                if order:
+                                    app_url = razorpay_service.get_razorpay_keys()["app_url"].rstrip("/")
+                                    widget_html = f"""
+                                    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+                                    <script>
+                                    var options = {{
+                                        key: "{order['key_id']}",
+                                        amount: "{order['amount']}",
+                                        currency: "{order['currency']}",
+                                        name: "Murthu AI Chatbot",
+                                        description: "Pro plan — monthly subscription",
+                                        order_id: "{order['order_id']}",
+                                        handler: function (response) {{
+                                            var url = "{app_url}/?razorpay=success"
+                                                + "&payment_id=" + response.razorpay_payment_id
+                                                + "&order_id=" + response.razorpay_order_id
+                                                + "&signature=" + response.razorpay_signature;
+                                            window.top.location.href = url;
+                                        }},
+                                        modal: {{
+                                            ondismiss: function () {{
+                                                window.top.location.href = "{app_url}/?checkout=cancelled";
+                                            }}
+                                        }}
+                                    }};
+                                    var rzp = new Razorpay(options);
+                                    rzp.open();
+                                    </script>
+                                    """
+                                    st.components.v1.html(widget_html, height=10)
+                                else:
+                                    st.error("Couldn't start checkout — Razorpay isn't fully configured yet.")
                     elif pending_plan == plan_key:
                         st.warning("⏳ Requested — awaiting approval")
                     else:
@@ -1046,6 +1111,24 @@ else:
                             else:
                                 st.warning(f"⚠️ {msg}")
                             st.rerun()
+
+        # ---- Day 22: Invoice history + PDF download for every real
+        # payment on record (Stripe or Razorpay). Manual admin-approval
+        # upgrades never appear here — there's no charge to invoice for
+        # those, which is the whole point of the Day 20 distinction.
+        my_payments = invoice_service.get_user_payments(st.session_state.user_id)
+        if my_payments:
+            st.write("")
+            st.markdown("#### 🧾 Billing history")
+            for pay_id, gateway, plan_name, amount, currency, status, inv_num, created_at in my_payments:
+                inv_col1, inv_col2, inv_col3 = st.columns([3, 2, 1])
+                inv_col1.markdown(f"**{inv_num}** · {plan_name.title()} plan")
+                inv_col2.caption(f"{gateway.title()} · {str(created_at)[:10]}")
+                with inv_col3:
+                    payment_row = invoice_service.get_payment(pay_id, user_id=st.session_state.user_id)
+                    pdf_bytes = invoice_service.generate_invoice_pdf(payment_row)
+                    st.download_button("⬇️ PDF", data=pdf_bytes, file_name=f"{inv_num}.pdf",
+                                        mime="application/pdf", key=f"inv_{pay_id}", use_container_width=True)
 
     # ============================================
     # MAIN AREA — ADMIN PANEL (Day 18, admins only)
