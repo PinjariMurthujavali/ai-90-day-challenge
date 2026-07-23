@@ -1010,7 +1010,7 @@ else:
             st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
 
         stripe_live = stripe_service.is_configured()
-        razorpay_live = razorpay_service.is_configured()
+        razorpay_live = razorpay_service.razorpay.is_configured()
         if stripe_live or razorpay_live:
             gateways = " / ".join(
                 filter(None, ["Stripe" if stripe_live else None, "Razorpay" if razorpay_live else None])
