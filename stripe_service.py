@@ -104,4 +104,24 @@ def handle_checkout_completed(session):
     except Exception:
         pass  # running outside Streamlit — no cache to clear
 
+    # Day 22: record the payment + mint an invoice. This runs inside the
+    # separate Flask webhook process (no Streamlit runtime), which is
+    # exactly why invoice_service only touches database.py directly and
+    # never imports streamlit itself.
+    import invoice_service
+    amount_info = session.get("amount_total")  # Stripe sends this in the
+    # smallest currency unit; fall back to the configured price if a test
+    # event doesn't include it.
+    amount = (amount_info / 100) if amount_info else 499
+    invoice_service.record_payment(
+        user_id=user_id,
+        gateway="stripe",
+        plan=plan,
+        amount=amount,
+        currency=(session.get("currency") or "inr").upper(),
+        gateway_order_id=session.get("id"),
+        gateway_payment_id=session.get("payment_intent") or session.get("id"),
+        status="paid",
+    )
+
     return True
