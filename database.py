@@ -388,6 +388,27 @@ def init_database():
         )
     ''')
 
+    # ---- Day 22: real payments (Stripe or Razorpay) + invoices. Only a
+    # confirmed, money-actually-moved charge gets a row here — never
+    # created for the Day 20 manual admin-approval queue above, which is
+    # exactly why upgrade_requests and payments stay two separate tables.
+    _run('''
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            gateway TEXT NOT NULL,
+            plan TEXT NOT NULL,
+            amount REAL NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'INR',
+            gateway_order_id TEXT,
+            gateway_payment_id TEXT,
+            status TEXT NOT NULL DEFAULT 'paid',
+            invoice_number TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
     _run('''
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
