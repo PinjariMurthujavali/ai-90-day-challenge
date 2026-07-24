@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 import os
 
 from database import init_database
+import database
 from styles import APP_CSS
 from config import PERSONALITIES, personality_info, personality_label
 
@@ -1005,6 +1006,22 @@ else:
             f'{pricing.PLANS.get(current_plan, pricing.PLANS["free"])["label"]}</span>',
             unsafe_allow_html=True,
         )
+
+        # ---- Day 23: Subscription Management ----
+        database.check_and_expire_subscriptions()
+        sub = database.get_subscription(st.session_state.user_id)
+        if sub["plan"] != "free" and sub["plan_expires_at"]:
+            renew_date = sub["plan_expires_at"].split("T")[0]
+            if sub["subscription_status"] == "cancelled":
+                st.warning(f"🚫 Your **{sub['plan'].title()}** plan is cancelled and stays active until **{renew_date}**, then drops to Free.")
+                if st.button("↩️ Reactivate subscription"):
+                    database.reactivate_subscription(st.session_state.user_id)
+                    st.rerun()
+            elif sub["subscription_status"] == "active":
+                st.caption(f"🔄 Renews automatically on **{renew_date}**")
+                if st.button("❌ Cancel subscription"):
+                    database.cancel_subscription(st.session_state.user_id)
+                    st.rerun()
 
         if pending_plan:
             st.info(f"⏳ Your request to upgrade to **{pricing.PLANS[pending_plan]['label']}** is pending admin approval.")
