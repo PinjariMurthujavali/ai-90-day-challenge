@@ -271,6 +271,13 @@ def init_database():
     _run("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'", ignore_errors=True)
     _run("ALTER TABLE users ADD COLUMN plan_updated_at TIMESTAMP", ignore_errors=True)
 
+    # ---- Day 23: Subscription Management. Real Razorpay payments (Day 22)
+    # only cover a one-time charge — these two columns turn that into an
+    # actual subscription: when it renews, and whether the user has asked
+    # to cancel (still active till expiry, no refund, standard SaaS pattern).
+    _run("ALTER TABLE users ADD COLUMN plan_expires_at TIMESTAMP", ignore_errors=True)
+    _run("ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'none'", ignore_errors=True)
+
     # Older DBs were created before OAuth existed, with password_hash NOT
     # NULL — SQLite can't ALTER a column's NOT NULL constraint in place, so
     # if we detect that old constraint we rebuild the table (same trick
@@ -305,16 +312,18 @@ def init_database():
                     email_notifications_enabled INTEGER DEFAULT 0,
                     is_admin INTEGER DEFAULT 0,
                     plan TEXT DEFAULT 'free',
-                    plan_updated_at TIMESTAMP
+                    plan_updated_at TIMESTAMP,
+                    plan_expires_at TIMESTAMP,
+                    subscription_status TEXT DEFAULT 'none'
                 )
             ''')
             _run('''
                 INSERT INTO users_new (id, username, password_hash, created_at, email, oauth_provider,
                                         oauth_id, avatar_url, email_notifications_enabled, is_admin,
-                                        plan, plan_updated_at)
+                                        plan, plan_updated_at, plan_expires_at, subscription_status)
                 SELECT id, username, password_hash, created_at, email, oauth_provider,
                        oauth_id, avatar_url, email_notifications_enabled, is_admin,
-                       plan, plan_updated_at
+                       plan, plan_updated_at, plan_expires_at, subscription_status
                 FROM users
             ''')
             _run("DROP TABLE users")
@@ -493,3 +502,77 @@ def init_database():
                 viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''', ignore_errors=True)
+
+
+# ============================================
+# Day 23: Subscription Management
+# ============================================
+# NOTE: update_user_plan() was already being called by invoice_service.py
+# after a successful Razorpay payment, but it never actually existed in
+# this file — every real payment was silently crashing at that step. This
+# adds it for real, plus renewal-date + cancel support.
+
+import datetime as _dt
+
+def update_user_plan(user_id: int, plan: str, days: int = 30, status: str = "active"):
+    """Set a user's plan and (re)start their subscription period.
+
+    Called right after a payment is verified. `days` is the billing
+    period length (30 for monthly). Also called by admin approval flows
+    with the same signature, so it stays the single source of truth.
+    """
+    expires_at = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).isoformat()
+    _run(
+        "UPDATE users SET plan = ?, plan_updated_at = CURRENT_TIMESTAMP, "
+        "plan_expires_at = ?, subscription_status = ? WHERE id = ?",
+        (plan, expires_at, status, user_id)
+    )
+    return True
+
+
+def get_subscription(user_id: int) -> dict:
+    """Return the current plan, renewal date, and status for a user."""
+    rows = _query(
+        "SELECT plan, plan_expires_at, subscription_status FROM users WHERE id = ?",
+        (user_id,)
+    )
+    if not rows:
+        return {"plan": "free", "plan_expires_at": None, "subscription_status": "none"}
+    plan, expires_at, status = rows[0]
+    return {
+        "plan": plan or "free",
+        "plan_expires_at": expires_at,
+        "subscription_status": status or "none",
+    }
+
+
+def cancel_subscription(user_id: int):
+    """User cancels: plan stays active until plan_expires_at, then the
+    daily expiry check below downgrades them to free. No refund — same
+    behavior as Netflix/Spotify style cancellations."""
+    _run(
+        "UPDATE users SET subscription_status = 'cancelled' WHERE id = ?",
+        (user_id,)
+    )
+    return True
+
+
+def reactivate_subscription(user_id: int):
+    """User changes their mind before expiry — flip back to active."""
+    _run(
+        "UPDATE users SET subscription_status = 'active' WHERE id = ?",
+        (user_id,)
+    )
+    return True
+
+
+def check_and_expire_subscriptions():
+    """Downgrade anyone whose plan_expires_at has passed to the free plan.
+    Cheap to call on every app load (WHERE clause keeps it a no-op query
+    when nothing has expired)."""
+    now = _dt.datetime.utcnow().isoformat()
+    _run(
+        "UPDATE users SET plan = 'free', subscription_status = 'expired' "
+        "WHERE plan != 'free' AND plan_expires_at IS NOT NULL AND plan_expires_at < ?",
+        (now,)
+    )
