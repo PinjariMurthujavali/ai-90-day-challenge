@@ -48,6 +48,26 @@ def is_configured():
     return bool(keys["secret_key"] and keys["price_id_pro"])
 
 
+def refund_payment(payment_intent_id, amount=None):
+    """Day 24: real refund via Stripe's API. amount is in the smallest
+    currency unit (paise for INR); None refunds the full amount.
+    Returns (success: bool, message: str)."""
+    keys = get_stripe_keys()
+    if not keys["secret_key"]:
+        return False, "Stripe not configured"
+
+    import stripe
+    stripe.api_key = keys["secret_key"]
+    try:
+        kwargs = {"payment_intent": payment_intent_id}
+        if amount is not None:
+            kwargs["amount"] = amount
+        stripe.Refund.create(**kwargs)
+        return True, "Refunded"
+    except Exception as e:
+        return False, str(e)
+
+
 def create_checkout_session(user_id, plan_key):
     """Creates a Stripe Checkout Session for the given plan and returns the
     URL to send the user to. Returns None if Stripe isn't configured, or
