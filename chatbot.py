@@ -1138,14 +1138,42 @@ else:
             st.write("")
             st.markdown("#### 🧾 Billing history")
             for pay_id, gateway, plan_name, amount, currency, status, inv_num, created_at in my_payments:
-                inv_col1, inv_col2, inv_col3 = st.columns([3, 2, 1])
+                payment_row = invoice_service.get_payment(pay_id, user_id=st.session_state.user_id)
+                inv_col1, inv_col2, inv_col3, inv_col4 = st.columns([3, 2, 1, 1.3])
                 inv_col1.markdown(f"**{inv_num}** · {plan_name.title()} plan")
-                inv_col2.caption(f"{gateway.title()} · {str(created_at)[:10]}")
+                inv_col2.caption(f"{gateway.title()} · {str(created_at)[:10]} · {status.title()}")
                 with inv_col3:
-                    payment_row = invoice_service.get_payment(pay_id, user_id=st.session_state.user_id)
                     pdf_bytes = invoice_service.generate_invoice_pdf(payment_row)
                     st.download_button("⬇️ PDF", data=pdf_bytes, file_name=f"{inv_num}.pdf",
                                         mime="application/pdf", key=f"inv_{pay_id}", use_container_width=True)
+                with inv_col4:
+                    refund_status = payment_row.get("refund_status") if payment_row else "none"
+                    if status == "paid" and refund_status in (None, "none"):
+                        if st.button("💸 Refund", key=f"refund_btn_{pay_id}", use_container_width=True):
+                            st.session_state[f"_show_refund_form_{pay_id}"] = True
+                            st.rerun()
+                    elif refund_status == "requested":
+                        st.caption("⏳ Refund pending")
+                    elif refund_status == "approved":
+                        st.caption("✅ Refunded")
+                    elif refund_status == "rejected":
+                        st.caption("❌ Refund denied")
+
+                if st.session_state.get(f"_show_refund_form_{pay_id}"):
+                    with st.form(f"refund_form_{pay_id}"):
+                        reason = st.text_area("Why are you requesting a refund?", key=f"refund_reason_{pay_id}")
+                        submitted = st.form_submit_button("Submit refund request")
+                        if submitted:
+                            if not reason.strip():
+                                st.error("❌ Please give a reason.")
+                            else:
+                                ok, msg = invoice_service.request_refund(pay_id, st.session_state.user_id, reason.strip())
+                                if ok:
+                                    st.success(f"✅ {msg}")
+                                else:
+                                    st.warning(f"⚠️ {msg}")
+                                st.session_state[f"_show_refund_form_{pay_id}"] = False
+                                st.rerun()
 
     # ============================================
     # MAIN AREA — ADMIN PANEL (Day 18, admins only)
@@ -1263,6 +1291,35 @@ else:
                     if st.button("❌ Reject", key=f"reject_{req_id}", use_container_width=True):
                         pricing.resolve_request(req_id, approve=False)
                         st.rerun()
+
+        # ---- Day 24: pending refund requests ----
+        pending_refunds = invoice_service.get_pending_refunds()
+        st.write("---")
+        st.markdown(f"##### 💸 Pending Refund Requests ({len(pending_refunds)})")
+        if not pending_refunds:
+            st.caption("No pending refund requests.")
+        else:
+            for (ref_pay_id, ref_inv_num, ref_username, ref_plan, ref_amount, ref_currency,
+                 ref_gateway, ref_gw_pay_id, ref_reason, ref_requested_at, ref_user_id) in pending_refunds:
+                with st.container(border=True):
+                    ref_col1, ref_col2 = st.columns([3, 1])
+                    with ref_col1:
+                        st.markdown(
+                            f"**{ref_username}** · {ref_inv_num} · {ref_plan.title()} plan · "
+                            f"{ref_currency} {ref_amount:.2f} · via {ref_gateway.title()}"
+                        )
+                        st.caption(f"Reason: {ref_reason}")
+                    with ref_col2:
+                        if st.button("✅ Approve refund", key=f"approve_refund_{ref_pay_id}", use_container_width=True):
+                            ok, msg = invoice_service.approve_refund(ref_pay_id)
+                            if ok:
+                                st.success(f"✅ {msg}")
+                            else:
+                                st.error(f"❌ {msg}")
+                            st.rerun()
+                        if st.button("❌ Deny refund", key=f"reject_refund_{ref_pay_id}", use_container_width=True):
+                            invoice_service.reject_refund(ref_pay_id)
+                            st.rerun()
 
     # ============================================
     # MAIN AREA — CHAT VIEW
