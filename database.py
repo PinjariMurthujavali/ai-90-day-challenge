@@ -418,6 +418,17 @@ def init_database():
         )
     ''')
 
+    # ---- Day 24: Refunds & Cancellations. `status` above already covers
+    # 'paid' vs 'refunded'; these extra columns track the request itself
+    # (who asked, why, when) as its own approval queue — same honest
+    # request-then-admin-approves pattern as Day 20 upgrades, since a
+    # refund is real money leaving the account and shouldn't self-approve.
+    _run("ALTER TABLE payments ADD COLUMN refund_status TEXT DEFAULT 'none'", ignore_errors=True)
+    _run("ALTER TABLE payments ADD COLUMN refund_reason TEXT", ignore_errors=True)
+    _run("ALTER TABLE payments ADD COLUMN refunded_amount REAL", ignore_errors=True)
+    _run("ALTER TABLE payments ADD COLUMN refund_requested_at TIMESTAMP", ignore_errors=True)
+    _run("ALTER TABLE payments ADD COLUMN refunded_at TIMESTAMP", ignore_errors=True)
+
     _run('''
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
