@@ -89,7 +89,7 @@ def get_user_payments(user_id):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, gateway, plan, amount, currency, status, invoice_number, created_at
-        FROM payments WHERE user_id = ? ORDER BY created_at DESC
+        FROM payments WHERE user_id = ? ORDER BY created_at DESC, id DESC
     ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
