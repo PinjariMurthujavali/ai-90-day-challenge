@@ -1085,14 +1085,28 @@ else:
                         # server-side above, before we trust it (razorpay=success handler).
                         if razorpay_live:
                             if st.button("🇮🇳 Pay with Razorpay", key=f"rzp_{plan_key}", use_container_width=True):
-                                order = razorpay_service.create_order(st.session_state.user_id, plan_key)
-                                if order:
+                                # BUG FIX: this was calling razorpay_service.create_order(...)
+                                # — create_order is a METHOD on the razorpay instance
+                                # (razorpay_service.razorpay), not a module-level function,
+                                # and it needs (user_id, plan, email, phone), not just two
+                                # args. That mismatch crashed the app with an AttributeError
+                                # the moment anyone clicked "Pay with Razorpay".
+                                user_email, _ = auth.get_email_settings(st.session_state.user_id)
+                                order = razorpay_service.razorpay.create_order(
+                                    str(st.session_state.user_id), plan_key, user_email or "", ""
+                                )
+                                # create_order() returns {"error": "..."} on failure, not
+                                # None/falsy — `if order:` alone would have treated that
+                                # error dict as success and tried to open a checkout with
+                                # no order_id.
+                                if order and "error" not in order:
+                                    rzp_key_id = razorpay_service.get_razorpay_keys()["key_id"]
                                     app_url = razorpay_service.get_razorpay_keys()["app_url"].rstrip("/")
                                     widget_html = f"""
                                     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
                                     <script>
                                     var options = {{
-                                        key: "{order['key_id']}",
+                                        key: "{rzp_key_id}",
                                         amount: "{order['amount']}",
                                         currency: "{order['currency']}",
                                         name: "Murthu AI Chatbot",
@@ -1117,7 +1131,8 @@ else:
                                     """
                                     st.components.v1.html(widget_html, height=10)
                                 else:
-                                    st.error("Couldn't start checkout — Razorpay isn't fully configured yet.")
+                                    err = order.get("error", "unknown error") if order else "no response"
+                                    st.error(f"Couldn't start checkout — {err}")
                     elif pending_plan == plan_key:
                         st.warning("⏳ Requested — awaiting approval")
                     else:
@@ -1187,6 +1202,39 @@ else:
         t2.metric("Total Chats", f"{totals['total_chats']:,}")
         t3.metric("Total Messages", f"{totals['total_messages']:,}")
         t4.metric("Pro/Enterprise", f"{totals['by_plan'].get('pro', 0) + totals['by_plan'].get('enterprise', 0):,}")
+
+        # ---- Day 25: Payment Analytics & Revenue Tracking ----
+        st.write("---")
+        st.markdown("##### 💰 Revenue")
+        rev = admin_service.get_revenue_summary()
+        rv1, rv2, rv3, rv4 = st.columns(4)
+        rv1.metric("Gross Revenue", f"₹{rev['gross_revenue']:,.2f}")
+        rv2.metric("Net Revenue", f"₹{rev['net_revenue']:,.2f}", delta=f"-₹{rev['total_refunded']:,.2f} refunded" if rev['total_refunded'] else None)
+        rv3.metric("Paid Invoices", f"{rev['paid_count']:,}")
+        rv4.metric("Avg Order Value", f"₹{rev['avg_order_value']:,.2f}")
+
+        if rev['refund_count']:
+            st.caption(f"↩️ {rev['refund_count']} refund(s) processed · {rev['refund_rate']:.1f}% refund rate")
+
+        daily = admin_service.get_daily_revenue(days=30)
+        if daily:
+            rev_col1, rev_col2 = st.columns([2, 1])
+            with rev_col1:
+                st.markdown("**Revenue — last 30 days**")
+                daily_df = pd.DataFrame(daily, columns=["day", "revenue"]).set_index("day")
+                st.bar_chart(daily_df, color="#6C63FF")
+            with rev_col2:
+                st.markdown("**By payment method**")
+                if rev['by_gateway']:
+                    for gw, amt, cnt in rev['by_gateway']:
+                        st.markdown(f"**{gw.title()}**: ₹{amt:,.2f} ({cnt} payments)")
+                else:
+                    st.caption("No payments yet.")
+                st.markdown("**By plan**")
+                for plan_name, amt, cnt in rev['by_plan_revenue']:
+                    st.markdown(f"**{plan_name.title()}**: ₹{amt:,.2f} ({cnt} payments)")
+        else:
+            st.caption("No revenue recorded yet — once a real payment comes through, it shows up here.")
 
         st.write("")
         search_q = st.text_input("🔍 Search by username or email", key="admin_search")
