@@ -1216,6 +1216,14 @@ else:
         if rev['refund_count']:
             st.caption(f"↩️ {rev['refund_count']} refund(s) processed · {rev['refund_rate']:.1f}% refund rate")
 
+        # ---- Day 26: tax collected (only meaningful if TAX_RATE is set) ----
+        tax_summary = admin_service.get_tax_summary()
+        if tax_summary["total_tax_collected"] > 0:
+            st.caption(
+                f"🧾 Tax collected to date: ₹{tax_summary['total_tax_collected']:,.2f} "
+                f"on ₹{tax_summary['total_taxable_value']:,.2f} taxable value (for GST filing reference)"
+            )
+
         daily = admin_service.get_daily_revenue(days=30)
         if daily:
             rev_col1, rev_col2 = st.columns([2, 1])
