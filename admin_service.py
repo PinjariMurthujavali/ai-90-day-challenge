@@ -73,6 +73,88 @@ def get_platform_totals():
     }
 
 
+# ============================================
+# Day 25: Payment Analytics & Revenue Tracking
+# Reads straight from the `payments` table Day 21-24 already write real
+# rows into (Stripe/Razorpay charges + refunds) — this is actual money
+# that moved, not projected/estimated figures.
+# ============================================
+
+@st.cache_data(ttl=30)
+def get_revenue_summary():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Gross = every payment that was ever actually collected, whether or
+    # not it was later refunded — a refund is money going back OUT, it
+    # doesn't erase the fact the charge happened. Filtering to only
+    # status='paid' here would silently shrink "gross" every time a
+    # refund got approved (caught this while testing: refunding a
+    # payment made gross_revenue drop by the refunded amount too, which
+    # is a real reporting bug — net_revenue is where a refund should
+    # show up, not gross).
+    cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status IN ('paid', 'refunded')")
+    gross_revenue = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COALESCE(SUM(refunded_amount), 0) FROM payments WHERE refund_status = 'approved'")
+    total_refunded = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM payments WHERE status IN ('paid', 'refunded')")
+    paid_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM payments WHERE refund_status = 'approved'")
+    refund_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT gateway, COALESCE(SUM(amount), 0), COUNT(*) FROM payments WHERE status IN ('paid', 'refunded') GROUP BY gateway")
+    by_gateway = cursor.fetchall()
+
+    cursor.execute("SELECT plan, COALESCE(SUM(amount), 0), COUNT(*) FROM payments WHERE status IN ('paid', 'refunded') GROUP BY plan")
+    by_plan_revenue = cursor.fetchall()
+
+    # Active paying subscribers right now (used as a simple MRR proxy —
+    # count of currently-active pro/enterprise plans times their price is
+    # a reasonable stand-in for real recurring-billing MRR, which would
+    # need the payment gateway's subscription objects to compute exactly).
+    cursor.execute("SELECT plan, COUNT(*) FROM users WHERE plan != 'free' GROUP BY plan")
+    active_paid_by_plan = dict(cursor.fetchall())
+
+    conn.close()
+
+    net_revenue = gross_revenue - total_refunded
+    avg_order_value = (gross_revenue / paid_count) if paid_count else 0
+
+    return {
+        "gross_revenue": gross_revenue,
+        "total_refunded": total_refunded,
+        "net_revenue": net_revenue,
+        "paid_count": paid_count,
+        "refund_count": refund_count,
+        "avg_order_value": avg_order_value,
+        "refund_rate": (refund_count / paid_count * 100) if paid_count else 0,
+        "by_gateway": by_gateway,
+        "by_plan_revenue": by_plan_revenue,
+        "active_paid_by_plan": active_paid_by_plan,
+    }
+
+
+@st.cache_data(ttl=30)
+def get_daily_revenue(days=30):
+    """Revenue per day for the last N days — feeds the trend chart on
+    the admin Revenue tab."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DATE(created_at) as day, COALESCE(SUM(amount), 0)
+        FROM payments
+        WHERE status IN ('paid', 'refunded') AND created_at >= DATE('now', ?)
+        GROUP BY DATE(created_at)
+        ORDER BY day ASC
+    ''', (f'-{days} days',))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
 def set_user_plan(user_id, plan):
     if plan not in PLAN_OPTIONS:
         return False
