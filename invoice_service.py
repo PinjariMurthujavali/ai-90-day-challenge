@@ -31,6 +31,7 @@
 # support on top.
 # ============================================
 
+import os
 from datetime import datetime
 
 import streamlit as st
@@ -118,18 +119,63 @@ def get_payment(payment_id, user_id=None):
     return dict(zip(cols, row))
 
 
+# ============================================
+# Day 26: Tax Compliance & Billing Receipts
+# Every price shown in the app (₹499/mo etc) is treated as tax-inclusive
+# — the standard way consumer SaaS prices are displayed in India — so
+# the tax amount is back-calculated out of the total rather than added
+# on top. All of this is configurable via .env and defaults to a plain
+# receipt (no tax lines) if left unset, same graceful-fallback pattern
+# as every other optional integration in this app.
+# ============================================
+
+def get_tax_config():
+    return {
+        "rate": float(os.getenv("TAX_RATE", "0") or 0),          # e.g. 18 for 18% GST
+        "label": os.getenv("TAX_LABEL", "GST"),
+        "seller_gstin": os.getenv("SELLER_GSTIN", ""),
+        "seller_name": os.getenv("SELLER_NAME", "Murthu AI Chatbot"),
+        "seller_address": os.getenv("SELLER_ADDRESS", ""),
+        "hsn_sac": os.getenv("HSN_SAC_CODE", "998314"),  # standard SAC for SaaS/software services in India
+    }
+
+
+def calculate_tax(total_amount):
+    """total_amount is what the customer was actually charged (tax
+    INCLUDED). Returns (base_amount, tax_amount, rate) — base + tax
+    always adds back up to total_amount exactly, to the paisa."""
+    cfg = get_tax_config()
+    rate = cfg["rate"]
+    if rate <= 0:
+        return total_amount, 0.0, 0.0
+    base_amount = total_amount / (1 + rate / 100)
+    tax_amount = total_amount - base_amount
+    return round(base_amount, 2), round(tax_amount, 2), rate
+
+
 def generate_invoice_pdf(payment_row):
     """payment_row is the dict returned by get_payment(). Returns raw PDF
     bytes for st.download_button. Uses fpdf2's core Helvetica font, so
     amounts are shown as 'Rs. 499.00' rather than the ₹ glyph — the core
     PDF fonts are latin-1 only and would either crash or render ₹ as a
     black box otherwise (same constraint export_utils.py already works
-    around for chat exports)."""
+    around for chat exports).
+
+    Day 26: if TAX_RATE is configured in .env, this becomes a proper
+    GST "Tax Invoice" — base amount + tax shown separately, seller GSTIN,
+    and the HSN/SAC code GST filings require for line items. Leave
+    TAX_RATE unset and it's just a plain receipt, no tax lines shown."""
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
 
     if not payment_row:
         raise ValueError("No payment found for this invoice.")
+
+    tax_cfg = get_tax_config()
+    total_amount = float(payment_row.get("amount", 0))
+    base_amount, tax_amount, tax_rate = calculate_tax(total_amount)
+    currency = payment_row.get("currency", "INR")
+    is_tax_invoice = tax_rate > 0
 
     pdf = FPDF()
     pdf.add_page()
@@ -139,9 +185,9 @@ def generate_invoice_pdf(payment_row):
     pdf.set_xy(10, 8)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 10, "Murthu AI Chatbot", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 10, tax_cfg["seller_name"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, "Payment Invoice", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, "Tax Invoice" if is_tax_invoice else "Payment Receipt", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.set_text_color(30, 32, 44)
     pdf.set_xy(10, 40)
@@ -152,14 +198,29 @@ def generate_invoice_pdf(payment_row):
     pdf.set_text_color(90, 90, 100)
     created_at = str(payment_row.get("created_at", ""))[:19]
     pdf.cell(0, 6, f"Date: {created_at}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    # Seller compliance details — only shown if actually configured, so a
+    # deployment with no GSTIN set just gets a clean plain receipt instead
+    # of blank/placeholder-looking fields.
+    if is_tax_invoice and tax_cfg["seller_gstin"]:
+        pdf.cell(0, 6, f"Seller GSTIN: {tax_cfg['seller_gstin']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    if is_tax_invoice and tax_cfg["seller_address"]:
+        pdf.cell(0, 6, tax_cfg["seller_address"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(6)
 
     rows = [
         ("Plan", str(payment_row.get("plan", "")).title()),
         ("Payment method", str(payment_row.get("gateway", "")).title()),
-        ("Amount", f"{payment_row.get('currency', 'INR')} {float(payment_row.get('amount', 0)):.2f}"),
-        ("Status", str(payment_row.get("status", "")).title()),
     ]
+    if is_tax_invoice:
+        rows.append(("HSN/SAC code", tax_cfg["hsn_sac"]))
+        rows.append(("Taxable amount", f"{currency} {base_amount:.2f}"))
+        rows.append((f"{tax_cfg['label']} ({tax_rate:.0f}%)", f"{currency} {tax_amount:.2f}"))
+        rows.append(("Total (incl. tax)", f"{currency} {total_amount:.2f}"))
+    else:
+        rows.append(("Amount", f"{currency} {total_amount:.2f}"))
+    rows.append(("Status", str(payment_row.get("status", "")).title()))
+
     if payment_row.get("refund_status") not in (None, "none"):
         rows.append(("Refund status", str(payment_row["refund_status"]).title()))
     if payment_row.get("gateway_payment_id"):
@@ -168,7 +229,7 @@ def generate_invoice_pdf(payment_row):
     pdf.set_text_color(30, 32, 44)
     for label, value in rows:
         pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(45, 8, label, border="B")
+        pdf.cell(50, 8, label, border="B")
         pdf.set_font("Helvetica", "", 10)
         pdf.cell(0, 8, value, border="B", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
