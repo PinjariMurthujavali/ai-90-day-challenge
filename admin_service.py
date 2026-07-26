@@ -155,6 +155,26 @@ def get_daily_revenue(days=30):
     return rows
 
 
+def get_tax_summary():
+    """Day 26: total tax collected across all payments, for GST filing
+    reference. Only meaningful once TAX_RATE is set in .env — returns
+    zero otherwise rather than guessing a rate."""
+    import invoice_service
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT amount FROM payments WHERE status IN ('paid', 'refunded')")
+    amounts = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    total_tax = 0.0
+    total_base = 0.0
+    for amt in amounts:
+        base, tax, _ = invoice_service.calculate_tax(amt)
+        total_tax += tax
+        total_base += base
+    return {"total_tax_collected": round(total_tax, 2), "total_taxable_value": round(total_base, 2)}
+
+
 def set_user_plan(user_id, plan):
     if plan not in PLAN_OPTIONS:
         return False
