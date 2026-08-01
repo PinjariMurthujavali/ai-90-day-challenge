@@ -440,6 +440,38 @@ elif selected == "🔧 Admin":
     df = pd.DataFrame(health_data)
     st.dataframe(df, use_container_width=True)
 
+    st.markdown("---")
+    st.subheader("⚡ Day 33: Performance Profiler & Benchmark")
+
+    if st.button("Run Performance Benchmark"):
+        from performance_profiler import benchmark_compare
+
+        data = list(range(10000))
+        data_set = set(data)
+        target = 9999
+
+        with st.spinner("Running benchmark..."):
+            results = benchmark_compare(
+                {
+                    "List Search (O(n))": lambda: target in data,
+                    "Set Search (O(1))": lambda: target in data_set,
+                },
+                iterations=1000,
+            )
+
+        bench_df = pd.DataFrame([
+            {"Implementation": name, "Avg (ms)": r["avg_ms"], "Median (ms)": r["median_ms"]}
+            for name, r in results.items()
+        ]).sort_values("Avg (ms)")
+
+        st.dataframe(bench_df, use_container_width=True)
+        st.bar_chart(bench_df.set_index("Implementation")["Avg (ms)"])
+
+        fastest = bench_df.iloc[0]
+        slowest = bench_df.iloc[-1]
+        speedup = slowest["Avg (ms)"] / fastest["Avg (ms)"] if fastest["Avg (ms)"] > 0 else 0
+        st.success(f"🏆 {fastest['Implementation']} is {speedup:.1f}x faster than {slowest['Implementation']}")
+
 # ============================================
 # FOOTER
 # ============================================
