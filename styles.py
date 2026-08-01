@@ -37,6 +37,24 @@ APP_CSS = """
         transform: translateY(-2px);
         box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
     }
+    /* Primary buttons (Login, Register, Login →, Create account →) get a bold animated gradient */
+    button[kind="primary"], button[kind="primaryFormSubmit"] {
+        background: linear-gradient(270deg, #6366F1, #8B5CF6, #22D3EE, #8B5CF6, #6366F1) !important;
+        background-size: 400% 400% !important;
+        animation: gradientShift 6s ease infinite;
+        border: none !important;
+        color: white !important;
+        box-shadow: 0 4px 18px rgba(99,102,241,0.45) !important;
+    }
+    button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover {
+        transform: translateY(-2px) scale(1.015);
+        box-shadow: 0 8px 26px rgba(139,92,246,0.55) !important;
+    }
+    @keyframes gradientShift {
+        0%   { background-position: 0% 50%; }
+        50%  { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
     div[data-testid="stChatMessage"] {
         border-radius: 16px;
         border: 1px solid rgba(255,255,255,0.06);
@@ -285,6 +303,21 @@ APP_CSS = """
     .floater.f4 { top: 78%; left: 82%; font-size: 2.4rem; animation-delay: 0.6s; }
     .floater.f5 { top: 45%; left: 50%; font-size: 1.1rem; animation-delay: 1.8s; }
     .floater.f6 { top: 5%;  left: 45%; font-size: 1.2rem; animation-delay: 3s;   }
+    .floater.f7  { top: 32%; left: 4%;  font-size: 1.5rem; animation-delay: 2.6s; animation-duration: 8s; }
+    .floater.f8  { top: 90%; left: 30%; font-size: 1.4rem; animation-delay: 1.4s; animation-duration: 6.5s; }
+    .floater.f9  { top: 12%; left: 68%; font-size: 1.6rem; animation-delay: 0.9s; animation-duration: 9s; }
+    .floater.f10 { top: 55%; left: 92%; font-size: 1.3rem; animation-delay: 3.4s; animation-duration: 7.2s; }
+    .floater.f11 { top: 85%; left: 60%; font-size: 1.5rem; animation-delay: 2s;   animation-duration: 8.4s; }
+    .floater.f12 { top: 2%;  left: 25%; font-size: 1.2rem; animation-delay: 1.7s; animation-duration: 6.8s; }
+    .floater.f13 { top: 60%; left: 30%; font-size: 1.3rem; animation-delay: 4s;   animation-duration: 9.5s; }
+    .floater.f14 { top: 25%; left: 78%; font-size: 1.4rem; animation-delay: 0.3s; animation-duration: 7.6s; }
+    .floater.f15 { top: 70%; left: 6%;  font-size: 1.3rem; animation-delay: 2.9s; animation-duration: 8.8s; }
+    .floater.f16 { top: 40%; left: 15%; font-size: 1.2rem; animation-delay: 1.2s; animation-duration: 6.2s; }
+    @media (max-width: 900px) {
+        .floater.f10, .floater.f11, .floater.f12, .floater.f13, .floater.f14, .floater.f15, .floater.f16 {
+            display: none;
+        }
+    }
     @keyframes floaty {
         0%   { transform: translateY(0px) rotate(0deg); }
         50%  { transform: translateY(-16px) rotate(8deg); }
@@ -363,6 +396,15 @@ APP_CSS = """
 
     @media (max-width: 900px) {
         .auth-feature-row { grid-template-columns: 1fr; }
+        .auth-hero { padding: 1.6rem 1.3rem; border-radius: 16px; }
+        .auth-hero-title { font-size: 1.5rem; }
+        .auth-hero-sub { font-size: 0.92rem; margin-bottom: 1.1rem; }
+        .auth-trust-row { gap: 0.8rem; font-size: 0.78rem; }
+    }
+    @media (max-width: 480px) {
+        .auth-hero { padding: 1.2rem 1rem; }
+        .auth-hero-title { font-size: 1.3rem; }
+        .floater { font-size: 1rem !important; opacity: 0.18; }
     }
 
     /* ---------- NEW for Day 18: premium depth + admin panel polish ---------- */
