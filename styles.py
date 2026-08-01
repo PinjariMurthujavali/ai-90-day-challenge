@@ -13,7 +13,7 @@ APP_CSS = """
     .main-title {
         font-size: 2.8rem;
         font-weight: 800;
-        background: linear-gradient(90deg, #FF5A5F, #FF8A65, #FFB84D);
+        background: linear-gradient(90deg, #6366F1, #8B5CF6, #22D3EE);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0;
@@ -35,7 +35,7 @@ APP_CSS = """
     }
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(255, 90, 95, 0.35);
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
     }
     div[data-testid="stChatMessage"] {
         border-radius: 16px;
@@ -70,8 +70,8 @@ APP_CSS = """
 
     /* ---------- Analytics metric cards ---------- */
     .metric-card {
-        background: linear-gradient(155deg, rgba(255,90,95,0.14), rgba(255,90,95,0.02));
-        border: 1px solid rgba(255,90,95,0.25);
+        background: linear-gradient(155deg, rgba(99,102,241,0.14), rgba(99,102,241,0.02));
+        border: 1px solid rgba(99,102,241,0.25);
         border-radius: 18px;
         padding: 1.1rem 1.3rem;
         text-align: left;
@@ -98,7 +98,7 @@ APP_CSS = """
         font-size: 1.3rem;
         font-weight: 700;
         margin: 1.4rem 0 0.6rem 0;
-        background: linear-gradient(90deg, #FF5A5F, #FFB84D);
+        background: linear-gradient(90deg, #6366F1, #22D3EE);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         display: inline-block;
@@ -125,7 +125,7 @@ APP_CSS = """
     }
     .community-card:hover {
         transform: translateY(-3px);
-        border-color: rgba(255,90,95,0.4);
+        border-color: rgba(99,102,241,0.4);
     }
     .community-title {
         font-size: 1.05rem;
@@ -158,7 +158,7 @@ APP_CSS = """
     .comment-author {
         font-weight: 700;
         font-size: 0.85rem;
-        color: #FF8A65;
+        color: #8B5CF6;
     }
     .comment-time {
         font-size: 0.72rem;
@@ -186,8 +186,8 @@ APP_CSS = """
         font-size: 0.86rem;
     }
     .notif-unread {
-        background: rgba(255,90,95,0.12);
-        border: 1px solid rgba(255,90,95,0.3);
+        background: rgba(99,102,241,0.12);
+        border: 1px solid rgba(99,102,241,0.3);
     }
     .notif-read {
         background: rgba(255,255,255,0.03);
@@ -201,7 +201,7 @@ APP_CSS = """
         margin-top: 2px;
     }
     .bell-badge {
-        background: #FF5A5F;
+        background: #6366F1;
         color: white;
         border-radius: 999px;
         padding: 1px 7px;
@@ -259,11 +259,11 @@ APP_CSS = """
         padding: 2.2rem 2rem;
         border-radius: 20px;
         background:
-            radial-gradient(circle at 15% 15%, rgba(255,138,50,0.22), transparent 55%),
-            radial-gradient(circle at 85% 20%, rgba(255,184,77,0.20), transparent 50%),
-            radial-gradient(circle at 60% 90%, rgba(255,90,95,0.14), transparent 55%),
+            radial-gradient(circle at 15% 15%, rgba(139,92,246,0.22), transparent 55%),
+            radial-gradient(circle at 85% 20%, rgba(34,211,238,0.20), transparent 50%),
+            radial-gradient(circle at 60% 90%, rgba(99,102,241,0.14), transparent 55%),
             linear-gradient(160deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
-        border: 1px solid rgba(255,159,67,0.18);
+        border: 1px solid rgba(139,92,246,0.18);
         overflow: hidden;
     }
     .auth-floaters {
@@ -276,7 +276,7 @@ APP_CSS = """
         position: absolute;
         font-size: 1.6rem;
         opacity: 0.28;
-        filter: drop-shadow(0 0 10px rgba(255,159,67,0.55));
+        filter: drop-shadow(0 0 10px rgba(139,92,246,0.55));
         animation: floaty 7s ease-in-out infinite;
     }
     .floater.f1 { top: 8%;  left: 6%;  font-size: 2.1rem; animation-delay: 0s;    }
@@ -299,9 +299,9 @@ APP_CSS = """
         font-size: 0.78rem;
         font-weight: 700;
         letter-spacing: 0.3px;
-        color: #FFB84D;
-        background: rgba(255,184,77,0.12);
-        border: 1px solid rgba(255,184,77,0.3);
+        color: #22D3EE;
+        background: rgba(34,211,238,0.12);
+        border: 1px solid rgba(34,211,238,0.3);
         padding: 4px 12px;
         border-radius: 999px;
         margin-bottom: 1rem;
@@ -357,8 +357,8 @@ APP_CSS = """
         border-radius: 10px !important;
     }
     div[data-testid="stTextInput"] input:focus {
-        box-shadow: 0 0 0 2px rgba(255,90,95,0.4) !important;
-        border-color: #FF5A5F !important;
+        box-shadow: 0 0 0 2px rgba(99,102,241,0.4) !important;
+        border-color: #6366F1 !important;
     }
 
     @media (max-width: 900px) {
@@ -371,7 +371,7 @@ APP_CSS = """
         transition: transform 0.12s ease, box-shadow 0.12s ease;
     }
     .stButton > button:hover {
-        box-shadow: 0 4px 14px rgba(255,90,95,0.22);
+        box-shadow: 0 4px 14px rgba(99,102,241,0.22);
         transform: translateY(-1px);
     }
     div[data-testid="stMetric"] {
@@ -382,7 +382,7 @@ APP_CSS = """
     }
     div[data-testid="stMetricValue"] {
         font-weight: 800;
-        background: linear-gradient(90deg, #FF5A5F, #FFB84D);
+        background: linear-gradient(90deg, #6366F1, #22D3EE);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
@@ -403,7 +403,7 @@ APP_CSS = """
     div[data-testid="stVerticalBlockBorderWrapper"]:hover {
         transform: translateY(-3px);
         box-shadow: 0 10px 24px rgba(0,0,0,0.35);
-        border-color: rgba(255,90,95,0.35) !important;
+        border-color: rgba(99,102,241,0.35) !important;
     }
 
     /* Plan-tier badges on the pricing page */
@@ -417,13 +417,13 @@ APP_CSS = """
         color: white;
     }
     .plan-badge-free       { background: linear-gradient(90deg, #6B7280, #9CA3AF); }
-    .plan-badge-pro        { background: linear-gradient(90deg, #FF5A5F, #FFB84D); }
+    .plan-badge-pro        { background: linear-gradient(90deg, #6366F1, #22D3EE); }
     .plan-badge-enterprise { background: linear-gradient(90deg, #7C3AED, #A855F7); }
 
     /* Milestone banner (Day 20: payment system live) */
     .milestone-banner {
-        background: linear-gradient(120deg, rgba(255,90,95,0.16), rgba(168,85,247,0.10));
-        border: 1px solid rgba(255,90,95,0.3);
+        background: linear-gradient(120deg, rgba(99,102,241,0.16), rgba(168,85,247,0.10));
+        border: 1px solid rgba(99,102,241,0.3);
         border-radius: 16px;
         padding: 0.9rem 1.3rem;
         margin-bottom: 1rem;
@@ -431,7 +431,7 @@ APP_CSS = """
     }
     .milestone-banner .milestone-tag {
         display: inline-block;
-        background: linear-gradient(90deg, #FF5A5F, #FFB84D);
+        background: linear-gradient(90deg, #6366F1, #22D3EE);
         color: white;
         border-radius: 999px;
         padding: 2px 12px;
