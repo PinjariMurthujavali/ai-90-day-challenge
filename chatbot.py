@@ -264,7 +264,6 @@ if not st.session_state.user_id:
     with hero_col:
         st.markdown("""
             <div class="auth-hero">
-                <span class="auth-hero-badge">🚀 90-Day Build Challenge · Day 20</span>
                 <div class="auth-floaters" aria-hidden="true">
                     <span class="floater f1">🤖</span>
                     <span class="floater f2">⚡</span>
@@ -272,6 +271,16 @@ if not st.session_state.user_id:
                     <span class="floater f4">🛰️</span>
                     <span class="floater f5">🔶</span>
                     <span class="floater f6">✨</span>
+                    <span class="floater f7">💻</span>
+                    <span class="floater f8">⚙️</span>
+                    <span class="floater f9">🐍</span>
+                    <span class="floater f10">📊</span>
+                    <span class="floater f11">☁️</span>
+                    <span class="floater f12">🔗</span>
+                    <span class="floater f13">🧠</span>
+                    <span class="floater f14">🗄️</span>
+                    <span class="floater f15">🔌</span>
+                    <span class="floater f16">📡</span>
                 </div>
                 <h2 class="auth-hero-title">One platform for every<br>AI conversation you have.</h2>
                 <p class="auth-hero-sub">
