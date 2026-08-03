@@ -6,6 +6,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
 import json
+import secrets
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -27,6 +28,45 @@ def token_required(f):
             return jsonify({"error": "Missing token"}), 401
         return f(*args, **kwargs)
     return decorated
+
+# ============================================
+# AUTH ENDPOINTS (Day 34: needed for mobile app login)
+# ============================================
+
+@app.route('/api/v1/auth/login', methods=['POST'])
+def api_login():
+    """Login endpoint for the mobile app. Reuses auth.py's login_user()."""
+    from auth import login_user
+    data = request.get_json(force=True, silent=True) or {}
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
+
+    success, user_id = login_user(username, password)
+    if not success:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    # Simple bearer token (stateless placeholder — swap for JWT in production)
+    token = secrets.token_hex(24)
+    return jsonify({"token": token, "user_id": user_id, "username": username})
+
+
+@app.route('/api/v1/auth/register', methods=['POST'])
+def api_register():
+    """Register endpoint for the mobile app. Reuses auth.py's register_user()."""
+    from auth import register_user
+    data = request.get_json(force=True, silent=True) or {}
+    username = data.get('username')
+    password = data.get('password')
+    email = data.get('email')
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
+
+    success, message = register_user(username, password, email)
+    if not success:
+        return jsonify({"error": message}), 400
+    return jsonify({"status": "registered", "message": message})
 
 # ============================================
 # LEADERBOARD ENDPOINTS
@@ -210,6 +250,51 @@ def get_chat_messages(chat_id):
         })
     
     return jsonify({"messages": result}), 200
+
+@app.route('/api/v1/chat/<int:chat_id>/messages', methods=['POST'])
+@token_required
+def send_message_api(chat_id):
+    """Send a message in an existing chat and get an AI reply (mobile app)."""
+    import os
+    data = request.get_json(force=True, silent=True) or {}
+    content = data.get('content')
+    if not content:
+        return jsonify({"error": "content is required"}), 400
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    # Save user message
+    cursor.execute(
+        "INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, 'user', ?, ?)",
+        (chat_id, content, datetime.now().isoformat())
+    )
+    conn.commit()
+
+    # Get AI reply via Groq (falls back to a stub reply if no key configured)
+    reply_text = "I'm here! (AI reply unavailable — GROQ_API_KEY not configured on this server.)"
+    api_key = os.getenv("GROQ_API_KEY")
+    if api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=api_key)
+            completion = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": content}],
+            )
+            reply_text = completion.choices[0].message.content
+        except Exception as e:
+            reply_text = f"AI reply failed: {str(e)}"
+
+    cursor.execute(
+        "INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, 'assistant', ?, ?)",
+        (chat_id, reply_text, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"reply": reply_text}), 201
+
 
 @app.route('/api/v1/chat', methods=['POST'])
 @token_required
