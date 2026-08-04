@@ -1289,7 +1289,7 @@ else:
                 "Public": st.column_config.NumberColumn(disabled=True),
                 "Joined": st.column_config.TextColumn(disabled=True),
                 "Username": st.column_config.TextColumn(disabled=True),
-                "Email": st.column_config.TextColumn(disabled=True),
+                "Email": st.column_config.TextColumn(disabled=False),
             },
             hide_index=True,
             use_container_width=True,
@@ -1303,8 +1303,10 @@ else:
                 user_id = int(df.iloc[i]["id"])
                 orig_plan = df.iloc[i]["plan"]
                 orig_admin = bool(df.iloc[i]["is_admin"])
+                orig_email = df.iloc[i]["email"]
                 new_plan = edited.iloc[i]["Plan"]
                 new_admin = bool(edited.iloc[i]["Admin"])
+                new_email = edited.iloc[i]["Email"]
 
                 if new_plan != orig_plan:
                     admin_service.set_user_plan(user_id, new_plan)
@@ -1315,6 +1317,9 @@ else:
                         errors.append(f"{df.iloc[i]['username']}: {msg}")
                     else:
                         changes += 1
+                if (new_email or None) != (orig_email or None):
+                    admin_service.set_user_email(user_id, new_email)
+                    changes += 1
 
             if changes:
                 st.success(f"✅ Saved {changes} change(s).")
