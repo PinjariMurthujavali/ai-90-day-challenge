@@ -163,13 +163,19 @@ function ChatScreen({ token, chatId, chatTitle, onBack }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [botTyping, setBotTyping] = useState(false);
+  const listRef = React.useRef(null);
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     try {
       const data = await apiRequest(`/chat/${chatId}/messages`, 'GET', null, token);
       setMessages(data.messages || []);
     } catch (e) {
       Alert.alert('Error loading messages', e.message);
+    } finally {
+      if (isRefresh) setRefreshing(false);
     }
   }, [chatId, token]);
 
@@ -177,20 +183,37 @@ function ChatScreen({ token, chatId, chatTitle, onBack }) {
     loadMessages();
   }, [loadMessages]);
 
+  const scrollToBottom = () => {
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
     const text = input.trim();
     setInput('');
     setSending(true);
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setBotTyping(true);
+    setMessages((prev) => [...prev, { role: 'user', content: text, timestamp: new Date().toISOString() }]);
+    scrollToBottom();
 
     try {
       const data = await apiRequest(`/chat/${chatId}/messages`, 'POST', { content: text }, token);
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply, timestamp: new Date().toISOString() }]);
     } catch (e) {
       Alert.alert('Send failed', e.message);
     } finally {
       setSending(false);
+      setBotTyping(false);
+      scrollToBottom();
+    }
+  };
+
+  const formatTime = (ts) => {
+    if (!ts) return '';
+    try {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
     }
   };
 
@@ -206,14 +229,27 @@ function ChatScreen({ token, chatId, chatTitle, onBack }) {
       </View>
 
       <FlatList
+        ref={listRef}
         data={messages}
         keyExtractor={(_, i) => String(i)}
         contentContainerStyle={{ padding: 16 }}
+        onContentSizeChange={scrollToBottom}
+        refreshing={refreshing}
+        onRefresh={() => loadMessages(true)}
         renderItem={({ item }) => (
           <View style={[styles.bubble, item.role === 'user' ? styles.bubbleUser : styles.bubbleBot]}>
             <Text style={styles.bubbleText}>{item.content}</Text>
+            {!!item.timestamp && <Text style={styles.bubbleTime}>{formatTime(item.timestamp)}</Text>}
           </View>
         )}
+        ListFooterComponent={
+          botTyping ? (
+            <View style={[styles.bubble, styles.bubbleBot, styles.bubbleTyping]}>
+              <ActivityIndicator size="small" color="#8B5CF6" />
+              <Text style={[styles.bubbleText, { marginLeft: 8 }]}>typing…</Text>
+            </View>
+          ) : null
+        }
       />
 
       <View style={styles.inputRow}>
@@ -223,8 +259,11 @@ function ChatScreen({ token, chatId, chatTitle, onBack }) {
           placeholderTextColor="#888"
           value={input}
           onChangeText={setInput}
+          onSubmitEditing={sendMessage}
+          returnKeyType="send"
+          multiline
         />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage} disabled={sending}>
+        <TouchableOpacity style={styles.sendButton} onPress={sendMessage} disabled={sending || !input.trim()}>
           {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendButtonText}>➤</Text>}
         </TouchableOpacity>
       </View>
@@ -334,6 +373,8 @@ const styles = StyleSheet.create({
   bubbleUser: { backgroundColor: '#6366F1', alignSelf: 'flex-end' },
   bubbleBot: { backgroundColor: '#1C1C2E', alignSelf: 'flex-start' },
   bubbleText: { color: '#fff' },
+  bubbleTime: { color: 'rgba(255,255,255,0.5)', fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
+  bubbleTyping: { flexDirection: 'row', alignItems: 'center' },
   inputRow: { flexDirection: 'row', padding: 12, borderTopWidth: 1, borderTopColor: '#2A2A40' },
   chatInput: { flex: 1, backgroundColor: '#1C1C2E', borderRadius: 20, paddingHorizontal: 16, color: '#fff', marginRight: 8 },
   sendButton: { backgroundColor: '#6366F1', borderRadius: 20, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
