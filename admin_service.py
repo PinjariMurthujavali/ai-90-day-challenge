@@ -191,6 +191,19 @@ def set_user_plan(user_id, plan):
     return True
 
 
+def set_user_email(user_id, email):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET email = ? WHERE id = ?",
+        (email or None, user_id),
+    )
+    conn.commit()
+    conn.close()
+    list_users_with_stats.clear()
+    return True
+
+
 def set_user_admin(user_id, is_admin_flag, requesting_user_id):
     """Prevents an admin from removing their own last-admin access by
     accident — at least one admin account must always remain."""
