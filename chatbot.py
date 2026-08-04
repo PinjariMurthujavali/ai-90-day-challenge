@@ -56,7 +56,7 @@ auth.ensure_admin_account()
 # PAGE CONFIG + CSS
 # ============================================
 
-st.set_page_config(page_title="Murthu AI Chatbot", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Murthu AI Chatbot", page_icon="app_icon.png", layout="wide")
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">🤖 Murthu AI Chatbot</p>', unsafe_allow_html=True)
