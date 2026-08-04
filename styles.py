@@ -482,5 +482,44 @@ APP_CSS = """
         letter-spacing: 0.4px;
         margin-right: 0.6rem;
     }
+
+    /* ============================================
+       Day 36: Mobile polish for the main (logged-in) app.
+       The login page already had solid mobile CSS from Day 17-20; this
+       is the first pass specifically for the nav bar, chat, and admin
+       tables once a phone screen gets involved.
+       ============================================ */
+    @media (max-width: 640px) {
+        /* Nav row (Chats/Explore/Analytics/Alerts/Profile/Pricing/Admin):
+           7 buttons in one row is fine on desktop but unreadable
+           squeezed onto a 375px phone screen — shrink font/padding
+           instead of letting Streamlit crush each label to 2px wide. */
+        .stButton > button {
+            padding: 0.4rem 0.5rem !important;
+            font-size: 0.78rem !important;
+            min-height: 42px;  /* keep it a real tap target even smaller */
+        }
+        .main-title { font-size: 1.6rem !important; }
+        .sub-title { font-size: 0.85rem !important; }
+
+        /* Chat bubbles: default Streamlit chat message padding eats too
+           much of a narrow screen's width for actual text. */
+        div[data-testid="stChatMessage"] {
+            padding: 0.5rem 0.6rem !important;
+        }
+
+        /* Admin data_editor / dataframe tables go off-screen on phones
+           without this — let them scroll horizontally instead of
+           squeezing every column unreadably thin. */
+        div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
+            overflow-x: auto !important;
+        }
+
+        /* Metric cards (revenue dashboard, etc) stack tighter */
+        div[data-testid="stMetric"] {
+            padding: 0.6rem 0.7rem !important;
+        }
+        div[data-testid="stMetricValue"] { font-size: 1.3rem !important; }
+    }
 </style>
 """
