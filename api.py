@@ -271,16 +271,25 @@ def send_message_api(chat_id):
     )
     conn.commit()
 
-    # Get AI reply via Groq (falls back to a stub reply if no key configured)
+    # Get AI reply via Groq, with full chat history for memory (falls back to a stub reply if no key configured)
     reply_text = "I'm here! (AI reply unavailable — GROQ_API_KEY not configured on this server.)"
     api_key = os.getenv("GROQ_API_KEY")
     if api_key:
         try:
             from groq import Groq
             client = Groq(api_key=api_key)
+
+            # Pull prior messages in this chat so the model has conversation memory
+            hist_cursor = conn.cursor()
+            hist_cursor.execute(
+                "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
+                (chat_id,)
+            )
+            history = [{"role": r, "content": c} for r, c in hist_cursor.fetchall()]
+
             completion = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": content}],
+                messages=history,
             )
             reply_text = completion.choices[0].message.content
         except Exception as e:
