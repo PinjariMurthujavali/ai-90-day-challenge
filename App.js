@@ -281,14 +281,19 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const savedToken = await AsyncStorage.getItem('auth_token');
-      const savedUserId = await AsyncStorage.getItem('user_id');
-      if (savedToken) {
-        setToken(savedToken);
-        setUserId(savedUserId);
-        setScreen('chatList');
+      try {
+        const savedToken = await AsyncStorage.getItem('auth_token');
+        const savedUserId = await AsyncStorage.getItem('user_id');
+        if (savedToken) {
+          setToken(savedToken);
+          setUserId(savedUserId);
+          setScreen('chatList');
+        }
+      } catch (e) {
+        console.warn('Boot check failed (continuing to login):', e.message);
+      } finally {
+        setBooting(false);
       }
-      setBooting(false);
     })();
   }, []);
 
