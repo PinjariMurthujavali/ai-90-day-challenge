@@ -1,0 +1,72 @@
+name: CI/CD Pipeline
+
+# DAY 40: CI/CD Pipeline
+# Runs automatically on every push/PR to main:
+#   1. Install dependencies
+#   2. Run unit tests (Day 37)
+#   3. Run integration tests (Day 38)
+#   4. Check Python syntax across the whole repo
+#   5. (main branch only) Notify Render to deploy the latest commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install API dependencies
+        run: |
+          pip install -r requirements-api.txt
+          pip install -r requirements-test.txt
+
+      - name: Syntax-check every Python file
+        run: |
+          for f in $(find . -name "*.py" -not -path "./node_modules/*"); do
+            python -m py_compile "$f" || exit 1
+          done
+          echo "✅ All Python files compiled cleanly"
+
+      - name: Run unit tests (Day 37)
+        env:
+          GROQ_API_KEY: dummy_key_for_ci
+        run: pytest test_api.py -v
+
+      - name: Run integration tests (Day 38)
+        env:
+          GROQ_API_KEY: dummy_key_for_ci
+        run: pytest test_integration.py -v
+
+      - name: Test summary
+        if: always()
+        run: echo "Test job finished with status ${{ job.status }}"
+
+  deploy-notify:
+    name: Trigger Render Deploy
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Render deploy hook
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+            echo "✅ Render deploy triggered"
+          else
+            echo "ℹ️ RENDER_DEPLOY_HOOK_URL secret not set — skipping auto-deploy trigger. Render's own auto-deploy-on-commit will still fire independently."
+          fi
