@@ -17,6 +17,7 @@ import pandas as pd
 from groq import Groq
 from dotenv import load_dotenv
 import os
+import time
 import requests
 import urllib.parse
 
@@ -1593,14 +1594,49 @@ else:
                 elif current_mode == "🎨 Image":
                     with st.spinner("🎨 Generating..."):
                         try:
-                            encoded_prompt = urllib.parse.quote(prompt_val)
+                            # Enhance the raw prompt with photographic/artistic
+                            # detail (lighting, composition, style) — the same
+                            # trick DALL-E/Midjourney front-ends use to get
+                            # noticeably better results from a short prompt.
+                            try:
+                                enhance_resp = client.chat.completions.create(
+                                    model="llama-3.3-70b-versatile",
+                                    messages=[
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "Rewrite the user's image idea into one detailed "
+                                                "image-generation prompt (lighting, composition, "
+                                                "style, mood, camera/lens if relevant). Reply with "
+                                                "ONLY the rewritten prompt, under 60 words, no preamble."
+                                            ),
+                                        },
+                                        {"role": "user", "content": prompt_val},
+                                    ],
+                                )
+                                enhanced_prompt = enhance_resp.choices[0].message.content.strip()
+                            except Exception:
+                                enhanced_prompt = prompt_val  # fall back to raw prompt if enhancement fails
+
+                            encoded_prompt = urllib.parse.quote(enhanced_prompt)
                             image_url = (
                                 f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-                                f"?width=768&height=768&nologo=true&model=flux"
+                                f"?width=1024&height=1024&nologo=true&model=flux&enhance=true"
                             )
-                            resp = requests.get(image_url, timeout=30)
-                            resp.raise_for_status()
-                            image_bytes = resp.content
+                            image_bytes = None
+                            last_err = None
+                            for attempt in range(3):
+                                try:
+                                    resp = requests.get(image_url, timeout=60)
+                                    resp.raise_for_status()
+                                    image_bytes = resp.content
+                                    break
+                                except requests.exceptions.RequestException as e:
+                                    last_err = e
+                                    if attempt < 2:
+                                        time.sleep(2 * (attempt + 1))
+                            if image_bytes is None:
+                                raise last_err
 
                             safe_name = "".join(
                                 c for c in prompt_val[:40] if c.isalnum() or c in " _-"
