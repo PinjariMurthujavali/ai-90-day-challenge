@@ -1,0 +1,27 @@
+# DAY 48: keeps the Docker build context small and prevents secrets/
+# local artifacts from ever being copied into an image layer.
+
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.gitignore
+
+# Never bake local databases or env files into the image
+chatbot.db
+*.db
+.env
+.env.*
+
+# Mobile app / node stuff — irrelevant to the API image
+mobile/
+node_modules/
+*.log
+
+# Docs
+README.md
+*.md
+
+# Test files — not needed at runtime (still run in CI, just not shipped)
+test_*.py
