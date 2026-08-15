@@ -17,6 +17,8 @@ import pandas as pd
 from groq import Groq
 from dotenv import load_dotenv
 import os
+import requests
+import urllib.parse
 
 from database import init_database
 import database
@@ -1498,6 +1500,64 @@ else:
                             st.image(img_data, width=220)
                 else:
                     st.caption("No files attached yet.")
+
+            # ---- NEW: AI Image Generation (real JPG, via Pollinations.ai — free, no API key) ----
+            with st.expander("🎨 Create Image (AI)", expanded=False):
+                img_prompt = st.text_input(
+                    "Describe the image you want",
+                    key=f"img_prompt_{chat_id}",
+                    placeholder="e.g. a cozy coffee shop in the rain, cinematic lighting",
+                )
+                gen_col1, gen_col2 = st.columns([1, 3])
+                with gen_col1:
+                    generate_clicked = st.button("✨ Generate", key=f"gen_img_{chat_id}", use_container_width=True)
+
+                if generate_clicked:
+                    if not img_prompt.strip():
+                        st.warning("Type a prompt first.")
+                    else:
+                        with st.spinner("🎨 Generating your image..."):
+                            try:
+                                encoded_prompt = urllib.parse.quote(img_prompt.strip())
+                                image_url = (
+                                    f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                                    f"?width=768&height=768&nologo=true&model=flux"
+                                )
+                                resp = requests.get(image_url, timeout=30)
+                                resp.raise_for_status()
+                                image_bytes = resp.content
+
+                                st.image(image_bytes, caption=img_prompt, use_container_width=True)
+
+                                safe_name = "".join(c for c in img_prompt[:40] if c.isalnum() or c in " _-").strip() or "ai_image"
+                                file_name = f"{safe_name}.jpg"
+
+                                dl_col, save_col = st.columns(2)
+                                with dl_col:
+                                    st.download_button(
+                                        "⬇️ Download JPG", data=image_bytes, file_name=file_name,
+                                        mime="image/jpeg", key=f"dl_gen_{chat_id}_{hash(img_prompt)}",
+                                        use_container_width=True,
+                                    )
+                                with save_col:
+                                    if st.button("💾 Save to chat", key=f"save_gen_{chat_id}_{hash(img_prompt)}", use_container_width=True):
+                                        ok, msg = upload_service.save_attachment(
+                                            chat_id, st.session_state.user_id, file_name, "image/jpeg", image_bytes
+                                        )
+                                        if ok:
+                                            chats.save_message(chat_id, "user", f"🎨 Create image: {img_prompt}")
+                                            chats.save_message(chat_id, "assistant", f"🖼️ Generated and saved: {file_name}")
+                                            st.success("Saved to this chat's attachments and history!")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Could not save: {msg}")
+                            except requests.exceptions.RequestException as e:
+                                st.error(f"⚠️ Image generation failed: {e}")
+
+                st.caption(
+                    "🎬 Video generation isn't available yet — free, fast, reliable text-to-video "
+                    "APIs don't really exist right now. Images only, for now."
+                )
 
             st.write("---")
 
