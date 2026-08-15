@@ -40,6 +40,7 @@ from export_utils import export_chat_json, export_chat_pdf
 import stripe_service
 import razorpay_service
 import invoice_service
+import video_service
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
@@ -1498,6 +1499,9 @@ else:
                         if upload_service.is_image(filename):
                             img_data, _, _ = upload_service.get_attachment_data(att_id)
                             st.image(img_data, width=220)
+                        elif upload_service.is_video(filename):
+                            vid_data, _, _ = upload_service.get_attachment_data(att_id)
+                            st.video(vid_data)
                 else:
                     st.caption("No files attached yet.")
 
@@ -1514,7 +1518,7 @@ else:
             # ---- "+" toolbar: Create Image / Create PDF, right above the message box (ChatGPT/Gemini-style) ----
             with st.popover("➕ Create", use_container_width=False):
                     tool_choice = st.radio(
-                        "Create", ["🎨 Image", "📄 PDF"],
+                        "Create", ["🎨 Image", "🎬 Video", "📄 PDF"],
                         key=f"tool_choice_{chat_id}", horizontal=True, label_visibility="collapsed",
                     )
 
@@ -1557,7 +1561,48 @@ else:
                                     except requests.exceptions.RequestException as e:
                                         st.error(f"⚠️ Image generation failed: {e}")
 
-                        st.caption("🎬 Video isn't available yet — no free provider is fast/reliable enough right now.")
+                    elif tool_choice == "🎬 Video":
+                        vid_prompt = st.text_input(
+                            "Describe the video",
+                            key=f"vid_prompt_{chat_id}",
+                            placeholder="a sunrise over the mountains turning into a busy city street",
+                        )
+                        st.caption("Builds a short ~10s AI clip from a few AI-generated scenes stitched with motion. Takes 30-60s.")
+                        if st.button("✨ Generate video", key=f"gen_vid_{chat_id}", use_container_width=True):
+                            if not vid_prompt.strip():
+                                st.warning("Type a prompt first.")
+                            else:
+                                progress = st.progress(0, text="Starting...")
+
+                                def _on_progress(i, total, scene_prompt):
+                                    progress.progress(
+                                        int((i / total) * 100),
+                                        text=f"Scene {i + 1}/{total}: {scene_prompt[:60]}",
+                                    )
+
+                                try:
+                                    video_bytes = video_service.generate_video(
+                                        client, vid_prompt.strip(), progress_callback=_on_progress
+                                    )
+                                    progress.progress(100, text="Done!")
+
+                                    safe_name = "".join(
+                                        c for c in vid_prompt[:40] if c.isalnum() or c in " _-"
+                                    ).strip() or "ai_video"
+                                    file_name = f"{safe_name}.mp4"
+
+                                    ok, msg = upload_service.save_attachment(
+                                        chat_id, st.session_state.user_id, file_name, "video/mp4", video_bytes
+                                    )
+                                    if ok:
+                                        chats.save_message(chat_id, "user", f"🎬 Create video: {vid_prompt}")
+                                        chats.save_message(chat_id, "assistant", f"🎬 Here's your generated video: {file_name}")
+                                        st.success("Generated! Added to this chat below. ⬇️")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Generated, but couldn't save: {msg}")
+                                except Exception as e:
+                                    st.error(f"⚠️ Video generation failed: {e}")
 
                     else:  # 📄 PDF
                         pdf_topic = st.text_input(
