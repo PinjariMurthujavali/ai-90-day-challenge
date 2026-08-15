@@ -1515,180 +1515,184 @@ else:
                 else:
                     st.chat_message("assistant", avatar=p_info["emoji"]).write(content)
 
-            # ---- "+" toolbar: Create Image / Create PDF, right above the message box (ChatGPT/Gemini-style) ----
-            with st.popover("➕ Create", use_container_width=False):
-                    tool_choice = st.radio(
-                        "Create", ["🎨 Image", "🎬 Video", "📄 PDF"],
-                        key=f"tool_choice_{chat_id}", horizontal=True, label_visibility="collapsed",
+            # ============================================
+            # Unified ChatGPT-style input bar:
+            #   [ + ]  [  message box                    ]  [ ↑ ]
+            # "+" picks the mode (Chat / Image / Video / PDF); the same
+            # text box + send arrow handles all four, so it always feels
+            # like one input — not a separate popup toolbar.
+            # ============================================
+            mode_key = f"input_mode_{chat_id}"
+            if mode_key not in st.session_state:
+                st.session_state[mode_key] = "💬 Chat"
+
+            placeholder_map = {
+                "💬 Chat": "Write a message...",
+                "🎨 Image": "Describe the image to generate...",
+                "🎬 Video": "Describe the video to generate...",
+                "📄 PDF": "What should the PDF be about?",
+            }
+            current_mode = st.session_state[mode_key]
+
+            bar_col1, bar_col2, bar_col3 = st.columns([0.7, 8, 0.9])
+
+            with bar_col1:
+                with st.popover("➕", use_container_width=True):
+                    st.caption("Attach / Create")
+                    picked = st.radio(
+                        "Mode", ["💬 Chat", "🎨 Image", "🎬 Video", "📄 PDF"],
+                        index=["💬 Chat", "🎨 Image", "🎬 Video", "📄 PDF"].index(current_mode),
+                        key=f"mode_radio_{chat_id}", label_visibility="collapsed",
                     )
+                    if picked != current_mode:
+                        st.session_state[mode_key] = picked
+                        st.rerun()
+                    if picked == "🎬 Video":
+                        st.caption("~10s AI clip stitched from a few generated scenes. Takes 30-60s.")
 
-                    if tool_choice == "🎨 Image":
-                        img_prompt = st.text_input(
-                            "Describe the image",
-                            key=f"img_prompt_{chat_id}",
-                            placeholder="a cozy coffee shop in the rain, cinematic lighting",
-                        )
-                        if st.button("✨ Generate image", key=f"gen_img_{chat_id}", use_container_width=True):
-                            if not img_prompt.strip():
-                                st.warning("Type a prompt first.")
+            with bar_col2:
+                prompt_text = st.text_input(
+                    "Message", key=f"unified_prompt_{chat_id}",
+                    placeholder=placeholder_map[current_mode], label_visibility="collapsed",
+                )
+
+            with bar_col3:
+                send_clicked = st.button("↑", key=f"send_{chat_id}", use_container_width=True)
+
+            if current_mode != "💬 Chat":
+                st.caption(f"Mode: {current_mode} · tap ➕ to switch back to 💬 Chat")
+
+            if send_clicked and prompt_text.strip():
+                prompt_val = prompt_text.strip()
+                st.session_state[f"unified_prompt_{chat_id}"] = ""
+
+                if current_mode == "💬 Chat":
+                    chats.save_message(chat_id, "user", prompt_val)
+                    with st.spinner(f"{p_info['emoji']} Thinking..."):
+                        messages = [{"role": "system", "content": system_prompt}]
+                        for role, content in history:
+                            messages.append({"role": role, "content": content})
+                        messages.append({"role": "user", "content": prompt_val})
+                        try:
+                            response = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=messages,
+                            )
+                            ai_reply = response.choices[0].message.content
+                        except Exception as e:
+                            ai_reply = f"⚠️ Error getting AI response: {str(e)}"
+                        chats.save_message(chat_id, "assistant", ai_reply)
+                    st.rerun()
+
+                elif current_mode == "🎨 Image":
+                    with st.spinner("🎨 Generating..."):
+                        try:
+                            encoded_prompt = urllib.parse.quote(prompt_val)
+                            image_url = (
+                                f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                                f"?width=768&height=768&nologo=true&model=flux"
+                            )
+                            resp = requests.get(image_url, timeout=30)
+                            resp.raise_for_status()
+                            image_bytes = resp.content
+
+                            safe_name = "".join(
+                                c for c in prompt_val[:40] if c.isalnum() or c in " _-"
+                            ).strip() or "ai_image"
+                            file_name = f"{safe_name}.jpg"
+
+                            ok, msg = upload_service.save_attachment(
+                                chat_id, st.session_state.user_id, file_name, "image/jpeg", image_bytes
+                            )
+                            if ok:
+                                chats.save_message(chat_id, "user", f"🎨 Create image: {prompt_val}")
+                                chats.save_message(chat_id, "assistant", f"🖼️ Here's your generated image: {file_name}")
+                                st.rerun()
                             else:
-                                with st.spinner("🎨 Generating..."):
-                                    try:
-                                        encoded_prompt = urllib.parse.quote(img_prompt.strip())
-                                        image_url = (
-                                            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-                                            f"?width=768&height=768&nologo=true&model=flux"
-                                        )
-                                        resp = requests.get(image_url, timeout=30)
-                                        resp.raise_for_status()
-                                        image_bytes = resp.content
+                                st.error(f"Generated, but couldn't save: {msg}")
+                        except requests.exceptions.RequestException as e:
+                            st.error(f"⚠️ Image generation failed: {e}")
 
-                                        safe_name = "".join(
-                                            c for c in img_prompt[:40] if c.isalnum() or c in " _-"
-                                        ).strip() or "ai_image"
-                                        file_name = f"{safe_name}.jpg"
+                elif current_mode == "🎬 Video":
+                    progress = st.progress(0, text="Starting...")
 
-                                        ok, msg = upload_service.save_attachment(
-                                            chat_id, st.session_state.user_id, file_name, "image/jpeg", image_bytes
-                                        )
-                                        if ok:
-                                            chats.save_message(chat_id, "user", f"🎨 Create image: {img_prompt}")
-                                            chats.save_message(chat_id, "assistant", f"🖼️ Here's your generated image: {file_name}")
-                                            st.success("Generated! Added to this chat below. ⬇️")
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Generated, but couldn't save: {msg}")
-                                    except requests.exceptions.RequestException as e:
-                                        st.error(f"⚠️ Image generation failed: {e}")
-
-                    elif tool_choice == "🎬 Video":
-                        vid_prompt = st.text_input(
-                            "Describe the video",
-                            key=f"vid_prompt_{chat_id}",
-                            placeholder="a sunrise over the mountains turning into a busy city street",
+                    def _on_progress(i, total, scene_prompt):
+                        progress.progress(
+                            int((i / total) * 100),
+                            text=f"Scene {i + 1}/{total}: {scene_prompt[:60]}",
                         )
-                        st.caption("Builds a short ~10s AI clip from a few AI-generated scenes stitched with motion. Takes 30-60s.")
-                        if st.button("✨ Generate video", key=f"gen_vid_{chat_id}", use_container_width=True):
-                            if not vid_prompt.strip():
-                                st.warning("Type a prompt first.")
-                            else:
-                                progress = st.progress(0, text="Starting...")
-
-                                def _on_progress(i, total, scene_prompt):
-                                    progress.progress(
-                                        int((i / total) * 100),
-                                        text=f"Scene {i + 1}/{total}: {scene_prompt[:60]}",
-                                    )
-
-                                try:
-                                    video_bytes = video_service.generate_video(
-                                        client, vid_prompt.strip(), progress_callback=_on_progress
-                                    )
-                                    progress.progress(100, text="Done!")
-
-                                    safe_name = "".join(
-                                        c for c in vid_prompt[:40] if c.isalnum() or c in " _-"
-                                    ).strip() or "ai_video"
-                                    file_name = f"{safe_name}.mp4"
-
-                                    ok, msg = upload_service.save_attachment(
-                                        chat_id, st.session_state.user_id, file_name, "video/mp4", video_bytes
-                                    )
-                                    if ok:
-                                        chats.save_message(chat_id, "user", f"🎬 Create video: {vid_prompt}")
-                                        chats.save_message(chat_id, "assistant", f"🎬 Here's your generated video: {file_name}")
-                                        st.success("Generated! Added to this chat below. ⬇️")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Generated, but couldn't save: {msg}")
-                                except Exception as e:
-                                    st.error(f"⚠️ Video generation failed: {e}")
-
-                    else:  # 📄 PDF
-                        pdf_topic = st.text_input(
-                            "What should the PDF be about?",
-                            key=f"pdf_topic_{chat_id}",
-                            placeholder="e.g. a one-page summary of remote work best practices",
-                        )
-                        if st.button("📄 Generate PDF", key=f"gen_pdf_{chat_id}", use_container_width=True):
-                            if not pdf_topic.strip():
-                                st.warning("Type a topic first.")
-                            else:
-                                with st.spinner("✍️ Writing content, then building the PDF..."):
-                                    try:
-                                        write_resp = client.chat.completions.create(
-                                            model="llama-3.3-70b-versatile",
-                                            messages=[
-                                                {"role": "system", "content": "Write clear, well-structured content for a PDF document. Use plain text only — no markdown symbols like # or **. Use short paragraphs and blank lines between sections."},
-                                                {"role": "user", "content": pdf_topic.strip()},
-                                            ],
-                                        )
-                                        pdf_text = write_resp.choices[0].message.content
-
-                                        from fpdf import FPDF
-                                        from fpdf.enums import XPos, YPos
-
-                                        pdf = FPDF()
-                                        pdf.add_page()
-                                        pdf.set_fill_color(108, 99, 255)
-                                        pdf.rect(0, 0, 210, 22, style="F")
-                                        pdf.set_xy(10, 6)
-                                        pdf.set_text_color(255, 255, 255)
-                                        pdf.set_font("Helvetica", "B", 14)
-                                        pdf.cell(0, 10, pdf_topic.strip()[:70], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-                                        pdf.set_text_color(30, 32, 44)
-                                        pdf.set_xy(10, 32)
-                                        pdf.set_font("Helvetica", "", 11)
-                                        safe_text = pdf_text.encode("latin-1", "replace").decode("latin-1")
-                                        for line in safe_text.split("\n"):
-                                            pdf.multi_cell(0, 6, line)
-                                        pdf_bytes = bytes(pdf.output())
-
-                                        safe_name = "".join(
-                                            c for c in pdf_topic[:40] if c.isalnum() or c in " _-"
-                                        ).strip() or "document"
-                                        file_name = f"{safe_name}.pdf"
-
-                                        ok, msg = upload_service.save_attachment(
-                                            chat_id, st.session_state.user_id, file_name, "application/pdf", pdf_bytes
-                                        )
-                                        if ok:
-                                            chats.save_message(chat_id, "user", f"📄 Create PDF: {pdf_topic}")
-                                            chats.save_message(chat_id, "assistant", f"📄 Here's your PDF: {file_name}")
-                                            st.success("Generated! Added to this chat below. ⬇️")
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Generated, but couldn't save: {msg}")
-                                    except Exception as e:
-                                        st.error(f"⚠️ PDF generation failed: {e}")
-
-            with input_col:
-                user_input = st.chat_input("Type your message...")
-
-            if user_input:
-                chats.save_message(chat_id, "user", user_input)
-                st.chat_message("user", avatar="🧑").write(user_input)
-
-                with st.spinner(f"{p_info['emoji']} Thinking..."):
-                    messages = [{"role": "system", "content": system_prompt}]
-                    for role, content in history:
-                        messages.append({"role": role, "content": content})
-                    messages.append({"role": "user", "content": user_input})
 
                     try:
-                        response = client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=messages
+                        video_bytes = video_service.generate_video(
+                            client, prompt_val, progress_callback=_on_progress
                         )
-                        ai_reply = response.choices[0].message.content
+                        progress.progress(100, text="Done!")
+
+                        safe_name = "".join(
+                            c for c in prompt_val[:40] if c.isalnum() or c in " _-"
+                        ).strip() or "ai_video"
+                        file_name = f"{safe_name}.mp4"
+
+                        ok, msg = upload_service.save_attachment(
+                            chat_id, st.session_state.user_id, file_name, "video/mp4", video_bytes
+                        )
+                        if ok:
+                            chats.save_message(chat_id, "user", f"🎬 Create video: {prompt_val}")
+                            chats.save_message(chat_id, "assistant", f"🎬 Here's your generated video: {file_name}")
+                            st.rerun()
+                        else:
+                            st.error(f"Generated, but couldn't save: {msg}")
                     except Exception as e:
-                        ai_reply = f"⚠️ Error getting AI response: {str(e)}"
+                        st.error(f"⚠️ Video generation failed: {e}")
 
-                    chats.save_message(chat_id, "assistant", ai_reply)
-                    st.chat_message("assistant", avatar=p_info["emoji"]).write(ai_reply)
+                else:  # 📄 PDF
+                    with st.spinner("✍️ Writing content, then building the PDF..."):
+                        try:
+                            write_resp = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=[
+                                    {"role": "system", "content": "Write clear, well-structured content for a PDF document. Use plain text only — no markdown symbols like # or **. Use short paragraphs and blank lines between sections."},
+                                    {"role": "user", "content": prompt_val},
+                                ],
+                            )
+                            pdf_text = write_resp.choices[0].message.content
 
-                st.rerun()
+                            from fpdf import FPDF
+                            from fpdf.enums import XPos, YPos
+
+                            pdf = FPDF()
+                            pdf.add_page()
+                            pdf.set_fill_color(108, 99, 255)
+                            pdf.rect(0, 0, 210, 22, style="F")
+                            pdf.set_xy(10, 6)
+                            pdf.set_text_color(255, 255, 255)
+                            pdf.set_font("Helvetica", "B", 14)
+                            pdf.cell(0, 10, prompt_val[:70], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+                            pdf.set_text_color(30, 32, 44)
+                            pdf.set_xy(10, 32)
+                            pdf.set_font("Helvetica", "", 11)
+                            safe_text = pdf_text.encode("latin-1", "replace").decode("latin-1")
+                            for line in safe_text.split("\n"):
+                                pdf.multi_cell(0, 6, line)
+                            pdf_bytes = bytes(pdf.output())
+
+                            safe_name = "".join(
+                                c for c in prompt_val[:40] if c.isalnum() or c in " _-"
+                            ).strip() or "document"
+                            file_name = f"{safe_name}.pdf"
+
+                            ok, msg = upload_service.save_attachment(
+                                chat_id, st.session_state.user_id, file_name, "application/pdf", pdf_bytes
+                            )
+                            if ok:
+                                chats.save_message(chat_id, "user", f"📄 Create PDF: {prompt_val}")
+                                chats.save_message(chat_id, "assistant", f"📄 Here's your PDF: {file_name}")
+                                st.rerun()
+                            else:
+                                st.error(f"Generated, but couldn't save: {msg}")
+                        except Exception as e:
+                            st.error(f"⚠️ PDF generation failed: {e}")
 
         else:
             st.info("👈 Select a chat from the sidebar, create a new one, or check out 🌍 **Explore** to see what the community is building!")
