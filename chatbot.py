@@ -1534,7 +1534,7 @@ else:
             }
             current_mode = st.session_state[mode_key]
 
-            bar_col1, bar_col2, bar_col3 = st.columns([0.7, 8, 0.9])
+            bar_col1, bar_col2 = st.columns([0.7, 9.2])
 
             with bar_col1:
                 with st.popover("➕", use_container_width=True):
@@ -1550,21 +1550,27 @@ else:
                     if picked == "🎬 Video":
                         st.caption("~10s AI clip stitched from a few generated scenes. Takes 30-60s.")
 
+            # NOTE: text_input + send button live inside a form with
+            # clear_on_submit=True. Streamlit does NOT allow resetting a
+            # widget's session_state value by code after it's been
+            # instantiated in the same run (raises StreamlitAPIException) —
+            # clear_on_submit is the supported way to empty the box on send.
             with bar_col2:
-                prompt_text = st.text_input(
-                    "Message", key=f"unified_prompt_{chat_id}",
-                    placeholder=placeholder_map[current_mode], label_visibility="collapsed",
-                )
-
-            with bar_col3:
-                send_clicked = st.button("↑", key=f"send_{chat_id}", use_container_width=True)
+                with st.form(key=f"input_form_{chat_id}", clear_on_submit=True, border=False):
+                    text_col, btn_col = st.columns([9, 1])
+                    with text_col:
+                        prompt_text = st.text_input(
+                            "Message", key=f"unified_prompt_{chat_id}",
+                            placeholder=placeholder_map[current_mode], label_visibility="collapsed",
+                        )
+                    with btn_col:
+                        send_clicked = st.form_submit_button("↑", use_container_width=True)
 
             if current_mode != "💬 Chat":
                 st.caption(f"Mode: {current_mode} · tap ➕ to switch back to 💬 Chat")
 
             if send_clicked and prompt_text.strip():
                 prompt_val = prompt_text.strip()
-                st.session_state[f"unified_prompt_{chat_id}"] = ""
 
                 if current_mode == "💬 Chat":
                     chats.save_message(chat_id, "user", prompt_val)
