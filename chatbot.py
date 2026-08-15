@@ -1548,7 +1548,7 @@ else:
                         st.session_state[mode_key] = picked
                         st.rerun()
                     if picked == "🎬 Video":
-                        st.caption("~10s AI clip stitched from a few generated scenes. Takes 30-60s.")
+                        st.caption("~10s AI clip with voice narration, built from a few generated scenes. Takes 45-90s.")
 
             # NOTE: text_input + send button live inside a form with
             # clear_on_submit=True. Streamlit does NOT allow resetting a
