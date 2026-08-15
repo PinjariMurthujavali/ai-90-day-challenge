@@ -1,0 +1,76 @@
+# ============================================
+# DAY 49: Docker Compose Multi-Container Setup
+# ============================================
+#
+# Brings up the Flask API + analytics microservice (Day 41) together,
+# on their own network, with health checks gating startup order — the
+# same multi-container pattern real deployments use, runnable locally
+# with one command.
+#
+# Run:
+#   docker compose up --build
+#
+# Stop:
+#   docker compose down
+#
+# Services:
+#   api               -> http://localhost:8000  (main Flask API)
+#   analytics-service -> http://localhost:5001  (Day 41 microservice)
+
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}
+    volumes:
+      # Local dev convenience: mount the DB so container restarts don't
+      # wipe local test data. In production this is Turso instead (see
+      # the .env comment below) — never bake chatbot.db into the image.
+      - ./chatbot.db:/app/chatbot.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - chatbot-net
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.analytics
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./chatbot.db:/app/chatbot.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - chatbot-net
+    restart: unless-stopped
+
+networks:
+  chatbot-net:
+    driver: bridge
+
+# ---------------------------------------------
+# .env file (create this next to docker-compose.yml, never commit it):
+#   GROQ_API_KEY=your_key_here
+#   TURSO_DATABASE_URL=your_turso_url
+#   TURSO_AUTH_TOKEN=your_turso_token
+# ---------------------------------------------
