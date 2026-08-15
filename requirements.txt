@@ -10,3 +10,4 @@ stripe==10.12.0
 razorpay==1.4.2
 moviepy==2.1.2
 Pillow==10.4.0
+gTTS==2.5.4
