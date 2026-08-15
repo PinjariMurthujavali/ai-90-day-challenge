@@ -20,6 +20,7 @@
 import io
 import os
 import tempfile
+import time
 import urllib.parse
 
 import requests
@@ -58,15 +59,25 @@ def _expand_prompt_to_scenes(client, prompt: str) -> list[str]:
         return [prompt] * SCENE_COUNT
 
 
-def _fetch_scene_image(prompt: str) -> Image.Image:
+def _fetch_scene_image(prompt: str, attempts: int = 3) -> Image.Image:
     encoded = urllib.parse.quote(prompt.strip())
     url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width=768&height=768&nologo=true&model=flux"
     )
-    resp = requests.get(url, timeout=45)
-    resp.raise_for_status()
-    return Image.open(io.BytesIO(resp.content)).convert("RGB")
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            # Pollinations can be slow under load — 90s timeout + retries
+            # instead of failing the whole video on one slow scene.
+            resp = requests.get(url, timeout=90)
+            resp.raise_for_status()
+            return Image.open(io.BytesIO(resp.content)).convert("RGB")
+        except Exception as e:
+            last_error = e
+            if attempt < attempts - 1:
+                time.sleep(2 * (attempt + 1))  # 2s, 4s backoff before retrying
+    raise last_error
 
 
 def generate_video(client, prompt: str, progress_callback=None) -> bytes:
@@ -81,12 +92,20 @@ def generate_video(client, prompt: str, progress_callback=None) -> bytes:
 
     clips = []
     tmp_paths = []
+    failed_scenes = []
     try:
         for i, scene_prompt in enumerate(scenes):
             if progress_callback:
                 progress_callback(i, len(scenes), scene_prompt)
 
-            img = _fetch_scene_image(scene_prompt)
+            try:
+                img = _fetch_scene_image(scene_prompt)
+            except Exception:
+                # One slow/failed scene shouldn't kill the whole video —
+                # skip it and keep going with whatever scenes did work.
+                failed_scenes.append(scene_prompt)
+                continue
+
             img = img.resize(VIDEO_SIZE)
 
             fd, path = tempfile.mkstemp(suffix=".jpg")
@@ -94,13 +113,19 @@ def generate_video(client, prompt: str, progress_callback=None) -> bytes:
             img.save(path, "JPEG", quality=90)
             tmp_paths.append(path)
 
+            is_first_clip = len(clips) == 0
             clip = (
                 ImageClip(path)
                 .with_duration(SECONDS_PER_SCENE)
                 .with_effects([vfx.Resize(lambda t: 1 + 0.06 * t)])  # slow zoom-in
-                .with_effects([vfx.CrossFadeIn(0.5)] if i > 0 else [])
+                .with_effects([] if is_first_clip else [vfx.CrossFadeIn(0.5)])
             )
             clips.append(clip)
+
+        if not clips:
+            raise RuntimeError(
+                "All scenes failed to generate (image service was unreachable/slow). Try again."
+            )
 
         final = concatenate_videoclips(clips, method="compose", padding=-0.5)
 
