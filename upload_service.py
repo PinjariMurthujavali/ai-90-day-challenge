@@ -15,8 +15,10 @@ import streamlit as st
 from database import get_connection
 
 MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024  # 3 MB per file
-ALLOWED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "csv"]
+MAX_VIDEO_SIZE_BYTES = 12 * 1024 * 1024  # 12 MB — AI-generated clips are bigger than images
+ALLOWED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "csv", "mp4"]
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+VIDEO_EXTENSIONS = {"mp4"}
 
 
 def human_size(num_bytes):
@@ -32,11 +34,17 @@ def is_image(filename):
     return ext in IMAGE_EXTENSIONS
 
 
-def save_attachment(chat_id, user_id, filename, mime_type, data_bytes):
-    if len(data_bytes) > MAX_FILE_SIZE_BYTES:
-        return False, f"File too large — max {human_size(MAX_FILE_SIZE_BYTES)}."
-
+def is_video(filename):
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return ext in VIDEO_EXTENSIONS
+
+
+def save_attachment(chat_id, user_id, filename, mime_type, data_bytes):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    size_cap = MAX_VIDEO_SIZE_BYTES if ext in VIDEO_EXTENSIONS else MAX_FILE_SIZE_BYTES
+    if len(data_bytes) > size_cap:
+        return False, f"File too large — max {human_size(size_cap)}."
+
     if ext not in ALLOWED_EXTENSIONS:
         return False, f"'.{ext}' isn't a supported file type."
 
