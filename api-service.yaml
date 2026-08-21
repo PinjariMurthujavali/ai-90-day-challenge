@@ -1,0 +1,19 @@
+# ============================================
+# DAY 50: Kubernetes Clusters Setup
+# ============================================
+# Pods are disposable — they get killed and replaced with new IPs all
+# the time. A Service is the stable address that never changes: it
+# load-balances across whichever chatbot-api Pods are currently
+# "Ready" (per the readinessProbe in api-deployment.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatbot-api
+  namespace: ai-chatbot
+spec:
+  selector:
+    app: chatbot-api   # routes to every Pod carrying this label
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP   # internal-only for now; Day 52 covers Ingress/external access

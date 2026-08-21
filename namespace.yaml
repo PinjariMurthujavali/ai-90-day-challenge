@@ -1,0 +1,12 @@
+# ============================================
+# DAY 50: Kubernetes Clusters Setup
+# ============================================
+# Every resource in this k8s/ folder lives inside this namespace,
+# isolating the chatbot cluster from anything else running in the
+# same Kubernetes cluster (other teams' apps, system pods, etc).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-chatbot
+  labels:
+    app: ai-90-day-challenge

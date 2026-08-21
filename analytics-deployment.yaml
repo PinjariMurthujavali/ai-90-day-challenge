@@ -1,0 +1,55 @@
+# ============================================
+# DAY 50: Kubernetes Clusters Setup
+# ============================================
+# Same pattern as chatbot-api, for the Day 41 analytics microservice.
+# Two independent Deployments (this one + chatbot-api) is exactly the
+# microservices idea from Days 41-47, now actually running as separate,
+# independently-scalable units on the cluster instead of two Python
+# processes on one machine.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: ai-chatbot
+  labels:
+    app: analytics-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      containers:
+        - name: analytics-service
+          image: analytics-service:latest   # built from Dockerfile.analytics (Day 48)
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - secretRef:
+                name: chatbot-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
