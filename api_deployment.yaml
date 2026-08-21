@@ -1,0 +1,61 @@
+# ============================================
+# DAY 50: Kubernetes Clusters Setup
+# ============================================
+# This is what docker-compose's single "api" container becomes on a
+# real cluster: instead of ONE container, Kubernetes runs `replicas`
+# identical Pods and keeps that many alive at all times — if a Pod
+# crashes or its node dies, the Deployment controller notices and
+# starts a replacement automatically. That self-healing is the whole
+# point of a cluster over "docker compose up" on one machine.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatbot-api
+  namespace: ai-chatbot
+  labels:
+    app: chatbot-api
+spec:
+  replicas: 2  # 2 Pods running the same image — no single point of failure
+  selector:
+    matchLabels:
+      app: chatbot-api
+  template:
+    metadata:
+      labels:
+        app: chatbot-api
+    spec:
+      containers:
+        - name: chatbot-api
+          image: chatbot-api:latest   # built from Dockerfile.api (Day 48)
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: chatbot-secrets
+          env:
+            - name: PORT
+              value: "8000"
+          # Same health endpoint docker-compose's healthcheck already
+          # uses — Kubernetes calls it itself instead of Docker doing so.
+          readinessProbe:   # is this Pod ready to receive traffic?
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:    # is this Pod still healthy, or should it be restarted?
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:   # guaranteed minimum — scheduler won't overpack a node
+              cpu: "100m"
+              memory: "128Mi"
+            limits:     # hard ceiling — pod gets throttled/killed past this
+              cpu: "500m"
+              memory: "512Mi"
